@@ -1,0 +1,13 @@
+AI usage log — Practice 2
+
+Date: 2026-09-14
+Tool: Notion AI
+
+AI was used for:
+- guidance with Multipass, LLVM, llvmlite, Git, and GitHub setup;
+- explaining the byte-based lexer state machine;
+- generating an initial code scaffold for the lexer and compiler;
+- debugging commands and designing valid/invalid tests;
+- preparing README and test-runner structure.
+
+I ran the commands, inspected the token output and compiler errors, tested the generated LLVM IR, and verified the repository commits.
