@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+*.ll
+*.o
+program
+test
