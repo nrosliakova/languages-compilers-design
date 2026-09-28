@@ -1,6 +1,11 @@
-i32 x{0}
-i32 mut y{10}
-i32 z{2+5}
-i32 mut t { x + 10 }
-t := t * z
-exit t
+i64 a{10}
+bool b{true}
+bool c{false}
+bool d{a == 10}
+bool mut e{a != 10}
+e := b == d
+i32 x{15}
+i64 mut y{x}
+i64 z{x + 10}
+y := y * z + a
+exit y

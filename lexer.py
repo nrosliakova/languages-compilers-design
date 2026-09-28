@@ -1,7 +1,15 @@
 from dataclasses import dataclass
 
 
-KEYWORDS = {"i32", "mut", "exit"}
+KEYWORDS = {
+    "i32",
+    "i64",
+    "bool",
+    "mut",
+    "exit",
+    "true",
+    "false",
+}
 
 
 class LexError(Exception):
@@ -18,12 +26,6 @@ class Token:
     text: str
     line: int
     column: int
-
-    def __repr__(self):
-        return (
-            f"Token({self.kind!r}, {self.text!r}, "
-            f"{self.line}:{self.column})"
-        )
 
 
 def is_letter(byte):
@@ -49,16 +51,13 @@ def display_byte(byte):
 def lex(data):
     lines = []
     tokens = []
-
     state = "START"
     i = 0
     line = 1
     column = 1
-
     start = 0
     start_line = 1
     start_column = 1
-
     open_brace = None
 
     while i <= len(data):
@@ -67,10 +66,8 @@ def lex(data):
         if state == "START":
             if byte is None:
                 break
-
             if byte in (ord(" "), ord("\t"), ord("\r")):
                 pass
-
             elif byte == ord("\n"):
                 if open_brace is not None:
                     brace_line, brace_column = open_brace
@@ -79,44 +76,41 @@ def lex(data):
                         brace_column,
                         "'{' is not closed before the end of the line",
                     )
-
                 tokens.append(Token("endline", "\\n", line, column))
                 lines.append(tokens)
                 tokens = []
-
                 line += 1
                 column = 0
-
             elif is_letter(byte):
                 state = "IDENT"
                 start = i
                 start_line = line
                 start_column = column
-
             elif is_digit(byte):
                 state = "NUMBER"
                 start = i
                 start_line = line
                 start_column = column
-
             elif byte == ord("{"):
                 tokens.append(Token("block", "{", line, column))
                 open_brace = (line, column)
-
             elif byte == ord("}"):
                 tokens.append(Token("block", "}", line, column))
                 open_brace = None
-
             elif byte in (ord("+"), ord("-"), ord("*")):
-                tokens.append(
-                    Token("operator", chr(byte), line, column)
-                )
-
+                tokens.append(Token("operator", chr(byte), line, column))
             elif byte == ord(":"):
                 state = "COLON"
                 start_line = line
                 start_column = column
-
+            elif byte == ord("="):
+                state = "EQUAL"
+                start_line = line
+                start_column = column
+            elif byte == ord("!"):
+                state = "BANG"
+                start_line = line
+                start_column = column
             else:
                 raise LexError(
                     line,
@@ -125,38 +119,27 @@ def lex(data):
                 )
 
         elif state == "IDENT":
-            if byte is not None and (
-                is_letter(byte) or is_digit(byte)
-            ):
+            if byte is not None and (is_letter(byte) or is_digit(byte)):
                 pass
             else:
                 text = data[start:i].decode("ascii")
                 kind = "keyword" if text in KEYWORDS else "identifier"
-
-                tokens.append(
-                    Token(kind, text, start_line, start_column)
-                )
-
+                tokens.append(Token(kind, text, start_line, start_column))
                 state = "START"
                 continue
 
         elif state == "NUMBER":
             if byte is not None and is_digit(byte):
                 pass
-
             elif byte is not None and is_letter(byte):
                 raise LexError(
                     line,
                     column,
                     "a letter cannot appear inside a number",
                 )
-
             else:
                 text = data[start:i].decode("ascii")
-                tokens.append(
-                    Token("number", text, start_line, start_column)
-                )
-
+                tokens.append(Token("number", text, start_line, start_column))
                 state = "START"
                 continue
 
@@ -166,12 +149,37 @@ def lex(data):
                     Token("operator", ":=", start_line, start_column)
                 )
                 state = "START"
-
             else:
                 raise LexError(
                     start_line,
                     start_column,
                     "':' must be followed by '='",
+                )
+
+        elif state == "EQUAL":
+            if byte == ord("="):
+                tokens.append(
+                    Token("operator", "==", start_line, start_column)
+                )
+                state = "START"
+            else:
+                raise LexError(
+                    start_line,
+                    start_column,
+                    "expected '==' (a single '=' is not an operator)",
+                )
+
+        elif state == "BANG":
+            if byte == ord("="):
+                tokens.append(
+                    Token("operator", "!=", start_line, start_column)
+                )
+                state = "START"
+            else:
+                raise LexError(
+                    start_line,
+                    start_column,
+                    "expected '!=' (a single '!' is not an operator)",
                 )
 
         i += 1
@@ -189,12 +197,3 @@ def lex(data):
         lines.append(tokens)
 
     return lines
-
-
-def print_tokens(lines):
-    for token_line in lines:
-        for token in token_line:
-            print(
-                f"{token.line}:{token.column} "
-                f"{token.kind:<10} {token.text!r}"
-            )

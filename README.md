@@ -1,33 +1,30 @@
-# Languages and Compilers Design
+# Languages and Compilers Design — Practice 4
 
-Practice 2 compiler implemented in Python with llvmlite.
+This version includes the parser and AST foundation from Practice 3 and the typed semantic pass required for Practice 4.
+
+## Pipeline
+
+`source -> lexer -> parser -> AST -> semantic checker -> LLVM code generator`
 
 ## Requirements
 
 - Python 3
-- llvmlite 0.49
-- LLVM tools, including `lli`, `llc`, and `clang`
+- llvmlite
+- LLVM `lli`
 
-## Compile and run
+## Commands
 
+```bash
+python3 compiler.py --ast input.txt
 python3 compiler.py input.txt output.ll
 lli output.ll
-
-Alternatively:
-
-llc -filetype=obj -relocation-model=pic output.ll -o output.o
-clang -fPIE output.o -o program
-./program
-
-## Run tests
-
 ./run_tests.sh
+```
 
-## Language examples
+## Supported language
 
-i32 x{5}
-i32 mut y{x + 10}
-y := y * 2
-exit y
-
-The lexer is a hand-written state machine over ASCII bytes. It does not use regular expressions, `split()`, or a lexer generator.
+- `i32`, `i64`, and `bool`
+- `const` by default and optional `mut`
+- `+`, `-`, `*`, `==`, and `!=`
+- implicit widening from `i32` to `i64`
+- integer and boolean exits

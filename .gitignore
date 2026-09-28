@@ -4,3 +4,7 @@ __pycache__/
 *.o
 program
 test
+
+.venv/
+core
+core.*

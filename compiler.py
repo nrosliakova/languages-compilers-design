@@ -1,5 +1,6 @@
 import os
 import sys
+from dataclasses import dataclass, field
 
 from llvmlite import ir
 import llvmlite.binding as llvm
@@ -7,8 +8,12 @@ import llvmlite.binding as llvm
 from lexer import LexError, lex
 
 
-I32 = ir.IntType(32)
+I1 = ir.IntType(1)
 I8 = ir.IntType(8)
+I32 = ir.IntType(32)
+I64 = ir.IntType(64)
+MAX_I32 = 2**31 - 1
+MAX_I64 = 2**63 - 1
 
 
 class CompileError(Exception):
@@ -19,306 +24,640 @@ class CompileError(Exception):
         super().__init__(message)
 
 
-def fail(token, message):
-    raise CompileError(token.line, token.column, message)
+@dataclass
+class Node:
+    line: int
+    column: int
+
+    def accept(self, visitor):
+        method_name = "visit_" + self.__class__.__name__.replace("Node", "").lower()
+        return getattr(visitor, method_name)(self)
 
 
-def end_position(tokens):
-    if tokens:
-        token = tokens[-1]
-        return token.line, token.column + len(token.text)
-
-    return 1, 1
+@dataclass
+class ProgramNode(Node):
+    statements: list
+    exit_node: object
 
 
-def read_operand(token, builder, symbols):
-    if token.kind == "number":
-        return ir.Constant(I32, int(token.text))
-
-    if token.kind == "identifier":
-        if token.text not in symbols:
-            fail(
-                token,
-                f"variable '{token.text}' is used before its declaration",
-            )
-
-        return builder.load(
-            symbols[token.text]["pointer"],
-            name=f"{token.text}.value",
-        )
-
-    fail(token, "expected a number or variable")
+@dataclass
+class DeclNode(Node):
+    name: str
+    type_name: str
+    mutable: bool
+    init: object
+    pointer: object = field(default=None, init=False, repr=False)
 
 
-def compile_expression(tokens, builder, symbols):
-    if not tokens:
-        raise CompileError(1, 1, "expected an expression")
-
-    if len(tokens) == 1:
-        return read_operand(tokens[0], builder, symbols)
-
-    if len(tokens) != 3:
-        fail(tokens[0], "invalid expression")
-
-    left_token, operator_token, right_token = tokens
-
-    if (
-        operator_token.kind != "operator"
-        or operator_token.text not in {"+", "-", "*"}
-    ):
-        fail(operator_token, "expected '+', '-' or '*'")
-
-    left = read_operand(left_token, builder, symbols)
-    right = read_operand(right_token, builder, symbols)
-
-    if operator_token.text == "+":
-        return builder.add(left, right, name="add.result")
-
-    if operator_token.text == "-":
-        return builder.sub(left, right, name="sub.result")
-
-    return builder.mul(left, right, name="mul.result")
+@dataclass
+class AssignNode(Node):
+    name: str
+    value: object
+    decl: object = field(default=None, init=False, repr=False)
 
 
-def compile_program(token_lines):
-    module = ir.Module(name="practice2")
-    module.triple = llvm.get_default_triple()
+@dataclass
+class ExitNode(Node):
+    value: object
 
-    main = ir.Function(
-        module,
-        ir.FunctionType(I32, []),
-        name="main",
-    )
-    builder = ir.IRBuilder(main.append_basic_block("entry"))
 
-    printf = ir.Function(
-        module,
-        ir.FunctionType(
-            I32,
-            [ir.PointerType(I8)],
-            var_arg=True,
-        ),
-        name="printf",
-    )
+@dataclass
+class ExprNode(Node):
+    type: str = field(default=None, init=False)
 
-    text = b"Program exit with result %d\n\0"
-    text_type = ir.ArrayType(I8, len(text))
-    fmt = ir.GlobalVariable(module, text_type, name="fmt")
-    fmt.linkage = "private"
-    fmt.global_constant = True
-    fmt.initializer = ir.Constant(text_type, bytearray(text))
 
-    symbols = {}
-    saw_exit = False
-    last_line = 1
+@dataclass
+class BinOpNode(ExprNode):
+    op: str
+    left: object
+    right: object
 
-    for token_line in token_lines:
-        tokens = [
-            token
-            for token in token_line
-            if token.kind != "endline"
-        ]
 
-        if not tokens:
-            continue
+@dataclass
+class VarNode(ExprNode):
+    name: str
+    decl: object = field(default=None, init=False, repr=False)
 
-        last_line = tokens[0].line
 
-        if saw_exit:
-            fail(tokens[0], "no statement is allowed after exit")
+@dataclass
+class ConstNode(ExprNode):
+    value: int
 
-        first = tokens[0]
 
-        # Declaration:
-        # i32 x{5}
-        # i32 mut y{10}
-        if first.kind == "keyword" and first.text == "i32":
-            index = 1
-            mutable = False
+@dataclass
+class BoolNode(ExprNode):
+    value: bool
 
-            if (
-                index < len(tokens)
-                and tokens[index].kind == "keyword"
-                and tokens[index].text == "mut"
-            ):
-                mutable = True
-                index += 1
 
-            if index >= len(tokens):
-                line, column = end_position(tokens)
+class Parser:
+    def __init__(self, lines):
+        self.lines = lines
+        self.tokens = []
+        self.pos = 0
+
+    def peek(self):
+        if self.pos < len(self.tokens):
+            return self.tokens[self.pos]
+        return None
+
+    def eat(self):
+        token = self.peek()
+        if token is not None:
+            self.pos += 1
+        return token
+
+    def at(self, text):
+        token = self.peek()
+        return token is not None and token.text == text
+
+    def end_position(self):
+        if self.tokens:
+            token = self.tokens[-1]
+            return token.line, token.column + len(token.text)
+        return 1, 1
+
+    def error_here(self, message):
+        token = self.peek()
+        if token is not None:
+            raise CompileError(token.line, token.column, message)
+        line, column = self.end_position()
+        raise CompileError(line, column, message)
+
+    def expect_text(self, text, message=None):
+        token = self.peek()
+        if token is None or token.text != text:
+            self.error_here(message or f"expected '{text}'")
+        return self.eat()
+
+    def expect_kind(self, kind, message):
+        token = self.peek()
+        if token is None or token.kind != kind:
+            self.error_here(message)
+        return self.eat()
+
+    def parse_program(self):
+        statements = []
+        exit_node = None
+        last_line = 1
+
+        for raw_line in self.lines:
+            tokens = [t for t in raw_line if t.kind != "endline"]
+            if not tokens:
+                continue
+
+            self.tokens = tokens
+            self.pos = 0
+            last_line = tokens[0].line
+
+            if exit_node is not None:
+                token = tokens[0]
                 raise CompileError(
-                    line,
-                    column,
-                    "expected a variable name",
+                    token.line,
+                    token.column,
+                    "no statement is allowed after exit",
                 )
 
-            name_token = tokens[index]
+            if self.at("exit"):
+                exit_node = self.parse_exit()
+            else:
+                statements.append(self.parse_statement())
 
-            if name_token.kind != "identifier":
-                fail(name_token, "expected a variable name")
-
-            name = name_token.text
-            index += 1
-
-            if name in symbols:
-                fail(name_token, f"variable '{name}' is declared twice")
-
-            if (
-                index >= len(tokens)
-                or tokens[index].kind != "block"
-                or tokens[index].text != "{"
-            ):
-                if index < len(tokens):
-                    fail(
-                        tokens[index],
-                        f"variable '{name}' needs an initialiser in {{}}",
-                    )
-
-                line, column = end_position(tokens)
+            if self.peek() is not None:
+                token = self.peek()
                 raise CompileError(
-                    line,
-                    column,
-                    f"variable '{name}' needs an initialiser in {{}}",
+                    token.line,
+                    token.column,
+                    f"unexpected '{token.text}' after the statement",
                 )
 
-            left_brace = tokens[index]
-            index += 1
-
-            if (
-                len(tokens) <= index
-                or tokens[-1].kind != "block"
-                or tokens[-1].text != "}"
-            ):
-                fail(
-                    left_brace,
-                    "'{' is not closed before the end of the line",
-                )
-
-            expression_tokens = tokens[index:-1]
-
-            if not expression_tokens:
-                fail(tokens[-1], "initializer cannot be empty")
-
-            value = compile_expression(
-                expression_tokens,
-                builder,
-                symbols,
+        if exit_node is None:
+            raise CompileError(
+                last_line + 1,
+                1,
+                "program has no exit statement",
             )
 
-            pointer = builder.alloca(I32, name=name)
-            builder.store(value, pointer)
+        return ProgramNode(1, 1, statements, exit_node)
 
-            symbols[name] = {
-                "pointer": pointer,
-                "mutable": mutable,
-            }
-            continue
-
-        # Exit:
-        # exit y
-        # exit 42
-        if first.kind == "keyword" and first.text == "exit":
-            if len(tokens) != 2:
-                fail(first, "exit requires exactly one value")
-
-            value = read_operand(tokens[1], builder, symbols)
-            fmt_pointer = builder.bitcast(
-                fmt,
-                ir.PointerType(I8),
-            )
-
-            builder.call(printf, [fmt_pointer, value])
-            builder.ret(ir.Constant(I32, 0))
-            saw_exit = True
-            continue
-
-        # Assignment:
-        # y := 5
-        # y := x + 3
-        if first.kind == "identifier":
-            name = first.text
-
-            if name not in symbols:
-                fail(
-                    first,
-                    f"variable '{name}' is used before its declaration",
-                )
-
-            if (
-                len(tokens) < 3
-                or tokens[1].kind != "operator"
-                or tokens[1].text != ":="
-            ):
-                fail(first, "invalid assignment")
-
-            if not symbols[name]["mutable"]:
-                fail(
-                    first,
-                    f"cannot assign to '{name}': it is not mut",
-                )
-
-            value = compile_expression(
-                tokens[2:],
-                builder,
-                symbols,
-            )
-
-            builder.store(value, symbols[name]["pointer"])
-            continue
-
-        fail(first, "invalid statement")
-
-    if not saw_exit:
+    def parse_statement(self):
+        token = self.peek()
+        if token is None:
+            self.error_here("expected a statement")
+        if token.text in {"i32", "i64", "bool"}:
+            return self.parse_decl()
+        if token.kind == "identifier":
+            return self.parse_assign()
         raise CompileError(
-            last_line + 1,
-            1,
-            "program has no exit statement",
+            token.line,
+            token.column,
+            f"cannot start a statement with '{token.text}'",
         )
 
-    return module
+    def parse_decl(self):
+        type_token = self.eat()
+        mutable = False
+        if self.at("mut"):
+            self.eat()
+            mutable = True
+
+        name = self.expect_kind("identifier", "expected a variable name")
+        if not self.at("{"):
+            self.error_here(
+                f"variable '{name.text}' needs an initialiser in {{}}"
+            )
+        self.eat()
+        init = self.parse_expr()
+        self.expect_text("}", "expected '}' after the initialiser")
+        return DeclNode(
+            name.line,
+            name.column,
+            name.text,
+            type_token.text,
+            mutable,
+            init,
+        )
+
+    def parse_assign(self):
+        name = self.eat()
+        self.expect_text(
+            ":=",
+            f"expected ':=' after '{name.text}'",
+        )
+        value = self.parse_expr()
+        return AssignNode(name.line, name.column, name.text, value)
+
+    def parse_exit(self):
+        exit_token = self.eat()
+        value = self.parse_factor()
+        return ExitNode(exit_token.line, exit_token.column, value)
+
+    def parse_expr(self):
+        node = self.parse_arith()
+        token = self.peek()
+        if token is not None and token.text in {"==", "!="}:
+            self.eat()
+            node = BinOpNode(
+                token.line,
+                token.column,
+                token.text,
+                node,
+                self.parse_arith(),
+            )
+        return node
+
+    def parse_arith(self):
+        node = self.parse_term()
+        while self.peek() is not None and self.peek().text in {"+", "-"}:
+            token = self.eat()
+            node = BinOpNode(
+                token.line,
+                token.column,
+                token.text,
+                node,
+                self.parse_term(),
+            )
+        return node
+
+    def parse_term(self):
+        node = self.parse_factor()
+        while self.peek() is not None and self.peek().text == "*":
+            token = self.eat()
+            node = BinOpNode(
+                token.line,
+                token.column,
+                token.text,
+                node,
+                self.parse_factor(),
+            )
+        return node
+
+    def parse_factor(self):
+        token = self.peek()
+        if token is None:
+            self.error_here(
+                "expected a number, boolean or variable, found end of line"
+            )
+        if token.kind == "number":
+            self.eat()
+            return ConstNode(token.line, token.column, int(token.text))
+        if token.kind == "identifier":
+            self.eat()
+            return VarNode(token.line, token.column, token.text)
+        if token.text in {"true", "false"}:
+            self.eat()
+            return BoolNode(token.line, token.column, token.text == "true")
+        raise CompileError(
+            token.line,
+            token.column,
+            f"expected a number, boolean or variable, got '{token.text}'",
+        )
+
+
+class AstPrinter:
+    def __init__(self):
+        self.lines = []
+        self.depth = 0
+
+    def add(self, text):
+        self.lines.append("  " * self.depth + text)
+
+    def child(self, node):
+        self.depth += 1
+        node.accept(self)
+        self.depth -= 1
+
+    def visit_program(self, node):
+        self.add("Program")
+        for statement in node.statements:
+            self.child(statement)
+        self.child(node.exit_node)
+        return "\n".join(self.lines)
+
+    def visit_decl(self, node):
+        mutability = "mut" if node.mutable else "const"
+        self.add(f"Decl {node.name} {node.type_name} {mutability}")
+        self.child(node.init)
+
+    def visit_assign(self, node):
+        self.add(f"Assign {node.name}")
+        self.child(node.value)
+
+    def visit_exit(self, node):
+        self.add("Exit")
+        self.child(node.value)
+
+    def visit_binop(self, node):
+        self.add(f"BinOp {node.op}")
+        self.child(node.left)
+        self.child(node.right)
+
+    def visit_var(self, node):
+        self.add(f"Var {node.name}")
+
+    def visit_const(self, node):
+        self.add(f"Const {node.value}")
+
+    def visit_bool(self, node):
+        self.add("Bool true" if node.value else "Bool false")
+
+
+class SemanticChecker:
+    def __init__(self):
+        self.symbols = {}
+
+    def check(self, program):
+        program.accept(self)
+
+    def visit_program(self, node):
+        for statement in node.statements:
+            statement.accept(self)
+        node.exit_node.accept(self)
+
+    def visit_decl(self, node):
+        if node.name in self.symbols:
+            raise CompileError(
+                node.line,
+                node.column,
+                f"variable '{node.name}' is declared twice",
+            )
+        node.init.accept(self)
+        self.check_assignable(
+            node.init,
+            node.type_name,
+            node,
+            f"initialise '{node.name}'",
+        )
+        self.symbols[node.name] = node
+
+    def visit_assign(self, node):
+        decl = self.symbols.get(node.name)
+        if decl is None:
+            raise CompileError(
+                node.line,
+                node.column,
+                f"variable '{node.name}' is used before its declaration",
+            )
+        if not decl.mutable:
+            raise CompileError(
+                node.line,
+                node.column,
+                f"cannot assign to '{node.name}': it is not mut",
+            )
+        node.decl = decl
+        node.value.accept(self)
+        self.check_assignable(
+            node.value,
+            decl.type_name,
+            node,
+            f"assign to '{node.name}'",
+        )
+
+    def visit_exit(self, node):
+        node.value.accept(self)
+
+    def visit_var(self, node):
+        decl = self.symbols.get(node.name)
+        if decl is None:
+            raise CompileError(
+                node.line,
+                node.column,
+                f"variable '{node.name}' is used before its declaration",
+            )
+        node.decl = decl
+        node.type = decl.type_name
+        return node.type
+
+    def visit_const(self, node):
+        if node.value <= MAX_I32:
+            node.type = "i32"
+        elif node.value <= MAX_I64:
+            node.type = "i64"
+        else:
+            raise CompileError(
+                node.line,
+                node.column,
+                f"constant {node.value} does not fit in i64",
+            )
+        return node.type
+
+    def visit_bool(self, node):
+        node.type = "bool"
+        return node.type
+
+    def visit_binop(self, node):
+        left_type = node.left.accept(self)
+        right_type = node.right.accept(self)
+
+        if node.op in {"+", "-", "*"}:
+            if left_type == "bool" or right_type == "bool":
+                raise CompileError(
+                    node.line,
+                    node.column,
+                    f"cannot apply '{node.op}' to bool",
+                )
+            node.type = (
+                "i64"
+                if left_type == "i64" or right_type == "i64"
+                else "i32"
+            )
+            return node.type
+
+        left_is_int = left_type in {"i32", "i64"}
+        right_is_int = right_type in {"i32", "i64"}
+        if left_is_int and right_is_int:
+            node.type = "bool"
+            return node.type
+        if left_type == "bool" and right_type == "bool":
+            node.type = "bool"
+            return node.type
+        raise CompileError(
+            node.line,
+            node.column,
+            f"cannot compare {left_type} with {right_type}",
+        )
+
+    def check_assignable(self, expr, want, at, action):
+        have = expr.type
+        if have == want or (have == "i32" and want == "i64"):
+            return
+        if isinstance(expr, ConstNode) and want == "i32" and have == "i64":
+            raise CompileError(
+                expr.line,
+                expr.column,
+                f"constant {expr.value} does not fit in i32",
+            )
+        raise CompileError(
+            at.line,
+            at.column,
+            f"cannot {action} of type {want} "
+            f"with a value of type {have}",
+        )
+
+
+class CodeGenerator:
+    def __init__(self):
+        self.module = ir.Module(name="practice4")
+        self.module.triple = llvm.get_default_triple()
+        self.main = ir.Function(
+            self.module,
+            ir.FunctionType(I32, []),
+            name="main",
+        )
+        self.builder = ir.IRBuilder(self.main.append_basic_block("entry"))
+        self.printf = ir.Function(
+            self.module,
+            ir.FunctionType(I32, [I8.as_pointer()], var_arg=True),
+            name="printf",
+        )
+        self.int_format = self.global_string(
+            "int_format",
+            b"Program exit with result %lld\n\0",
+        )
+        self.bool_format = self.global_string(
+            "bool_format",
+            b"Program exit with result %s\n\0",
+        )
+        self.true_text = self.global_string("true_text", b"true\0")
+        self.false_text = self.global_string("false_text", b"false\0")
+
+    def global_string(self, name, data):
+        array_type = ir.ArrayType(I8, len(data))
+        value = ir.GlobalVariable(self.module, array_type, name=name)
+        value.linkage = "private"
+        value.global_constant = True
+        value.initializer = ir.Constant(array_type, bytearray(data))
+        return value
+
+    def pointer(self, global_value):
+        return self.builder.bitcast(global_value, I8.as_pointer())
+
+    def llvm_type(self, type_name):
+        return {"i32": I32, "i64": I64, "bool": I1}[type_name]
+
+    def coerce(self, value, have, want):
+        if have == "i32" and want == "i64":
+            return self.builder.sext(value, I64, name="wide")
+        return value
+
+    def generate(self, program):
+        program.accept(self)
+        return self.module
+
+    def visit_program(self, node):
+        for statement in node.statements:
+            statement.accept(self)
+        node.exit_node.accept(self)
+
+    def visit_decl(self, node):
+        value = node.init.accept(self)
+        value = self.coerce(value, node.init.type, node.type_name)
+        node.pointer = self.builder.alloca(
+            self.llvm_type(node.type_name),
+            name=node.name,
+        )
+        self.builder.store(value, node.pointer)
+
+    def visit_assign(self, node):
+        value = node.value.accept(self)
+        value = self.coerce(
+            value,
+            node.value.type,
+            node.decl.type_name,
+        )
+        self.builder.store(value, node.decl.pointer)
+
+    def visit_exit(self, node):
+        value = node.value.accept(self)
+        if node.value.type == "bool":
+            text = self.builder.select(
+                value,
+                self.pointer(self.true_text),
+                self.pointer(self.false_text),
+                name="bool.text",
+            )
+            self.builder.call(
+                self.printf,
+                [self.pointer(self.bool_format), text],
+            )
+        else:
+            value = self.coerce(value, node.value.type, "i64")
+            self.builder.call(
+                self.printf,
+                [self.pointer(self.int_format), value],
+            )
+        self.builder.ret(ir.Constant(I32, 0))
+
+    def visit_var(self, node):
+        return self.builder.load(
+            node.decl.pointer,
+            name=f"{node.name}.value",
+        )
+
+    def visit_const(self, node):
+        return ir.Constant(self.llvm_type(node.type), node.value)
+
+    def visit_bool(self, node):
+        return ir.Constant(I1, int(node.value))
+
+    def visit_binop(self, node):
+        left = node.left.accept(self)
+        right = node.right.accept(self)
+
+        if node.op in {"+", "-", "*"}:
+            left = self.coerce(left, node.left.type, node.type)
+            right = self.coerce(right, node.right.type, node.type)
+            if node.op == "+":
+                return self.builder.add(left, right, name="add.result")
+            if node.op == "-":
+                return self.builder.sub(left, right, name="sub.result")
+            return self.builder.mul(left, right, name="mul.result")
+
+        if node.left.type in {"i32", "i64"}:
+            compare_type = (
+                "i64"
+                if node.left.type == "i64" or node.right.type == "i64"
+                else "i32"
+            )
+            left = self.coerce(left, node.left.type, compare_type)
+            right = self.coerce(right, node.right.type, compare_type)
+        predicate = "==" if node.op == "==" else "!="
+        return self.builder.icmp_signed(
+            predicate,
+            left,
+            right,
+            name="compare.result",
+        )
+
+
+def load_program(source_path):
+    with open(source_path, "rb") as source:
+        lines = lex(source.read())
+    return Parser(lines).parse_program()
+
+
+def print_error(error):
+    print(
+        f"compilation error: line "
+        f"{error.line}:{error.column}: {error.message}",
+        file=sys.stderr,
+    )
 
 
 def main():
-    if len(sys.argv) != 3:
+    ast_mode = len(sys.argv) == 3 and sys.argv[1] == "--ast"
+    compile_mode = len(sys.argv) == 3 and sys.argv[1] != "--ast"
+
+    if not ast_mode and not compile_mode:
         print(
-            "usage: python3 compiler.py SOURCE OUTPUT.ll",
+            "usage:\n"
+            "  python3 compiler.py SOURCE OUTPUT.ll\n"
+            "  python3 compiler.py --ast SOURCE",
             file=sys.stderr,
         )
         return 1
 
-    source_path = sys.argv[1]
-    output_path = sys.argv[2]
+    source_path = sys.argv[2] if ast_mode else sys.argv[1]
+    output_path = None if ast_mode else sys.argv[2]
+
+    if output_path is not None:
+        try:
+            os.remove(output_path)
+        except FileNotFoundError:
+            pass
 
     try:
-        os.remove(output_path)
-    except FileNotFoundError:
-        pass
+        program = load_program(source_path)
+        if ast_mode:
+            print(program.accept(AstPrinter()))
+            return 0
 
-    try:
-        with open(source_path, "rb") as source:
-            token_lines = lex(source.read())
-
-        module = compile_program(token_lines)
-
+        SemanticChecker().check(program)
+        module = CodeGenerator().generate(program)
         with open(output_path, "w", encoding="utf-8") as output:
             output.write(str(module))
-
-    except LexError as error:
-        print(
-            f"compilation error: line "
-            f"{error.line}:{error.column}: {error.message}",
-            file=sys.stderr,
-        )
+    except (LexError, CompileError) as error:
+        print_error(error)
         return 1
-
-    except CompileError as error:
-        print(
-            f"compilation error: line "
-            f"{error.line}:{error.column}: {error.message}",
-            file=sys.stderr,
-        )
-        return 1
-
     except OSError as error:
         print(f"compilation error: {error}", file=sys.stderr)
         return 1
