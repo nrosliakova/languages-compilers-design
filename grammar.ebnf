@@ -1,0 +1,10 @@
+program ::= { statement endline | endline } exit [ endline ]
+statement ::= declaration | assignment
+declaration ::= type [ "mut" ] ident "{" expression "}"
+type ::= "i32" | "i64" | "bool"
+assignment ::= ident ":=" expression
+exit ::= "exit" factor
+expression ::= arithmetic [ ( "==" | "!=" ) arithmetic ]
+arithmetic ::= term { ( "+" | "-" ) term }
+term ::= factor { "*" factor }
+factor ::= number | "true" | "false" | ident

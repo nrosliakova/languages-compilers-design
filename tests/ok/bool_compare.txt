@@ -1,0 +1,4 @@
+bool a{true}
+bool b{false}
+bool different{a != b}
+exit different

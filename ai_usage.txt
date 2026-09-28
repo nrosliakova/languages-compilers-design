@@ -1,0 +1,1791 @@
+
+Messages below are preserved as stored in the chat transcript, including original spelling, Markdown, Notion tags, links, and HTML line-break tags.
+
+==============================================================================
+USER
+==============================================================================
+
+<br />i need help, i didnt do <mention url="https://app.notion.com/p/3df73e86a42080f886a3faf07135b11b">pr3</mention>  and i need to do <mention url="https://app.notion.com/p/3e773e86a420806f88addab138d297ef">pr4</mention>  cuz the deadline is today (i wont get any points for practice 3 now) so i need help to prepare everything so i can start this one and than help me with this practice<br /><br />but also its one projrct for whole course so i need to do everything neccesary from pr3 so there wont be any holes
+
+==============================================================================
+ASSISTANT
+==============================================================================
+
+Yes — we can implement the necessary parts of <mention url="https://app.notion.com/p/3df73e86a42080f886a3faf07135b11b">Practice 3</mention> directly inside the `practice-4` branch, then complete <mention url="https://app.notion.com/p/3e773e86a420806f88addab138d297ef">Practice 4</mention>. You do **not** need to submit Practice 3 separately, but its parser and AST are required foundations for Practice 4.[^https://app.notion.com/p/3df73e86a42080f886a3faf07135b11b][^https://app.notion.com/p/3e773e86a420806f88addab138d297ef]
+
+## Fastest safe plan
+
+### 1. Create the Practice 4 branch
+
+From your existing `practice-2` work:
+
+```bash
+git switch practice-2
+git switch -c practice-4
+```
+
+Do not create a separate `practice-3` branch unless your teacher explicitly requires it.
+
+### 2. Add the essential Practice 3 architecture
+
+We need to replace the current direct **tokens → LLVM** approach with:
+
+```text
+source
+  ↓
+lexer
+  ↓
+parser
+  ↓
+AST
+  ↓
+semantic checker
+  ↓
+LLVM code generator
+```
+
+Essential Practice 3 pieces:
+
+- AST node classes:
+  - `ProgramNode`
+  - `DeclNode`
+  - `AssignNode`
+  - `ExitNode`
+  - `BinOpNode`
+  - `VarNode`
+  - `ConstNode`
+  - plus `BoolNode` for Practice 4
+- Recursive-descent `Parser`
+- Operator precedence:
+  - comparison: `==`, `!=`
+  - arithmetic: `+`, `-`
+  - multiplication: `*`
+  - factor: number, boolean, variable
+- `--ast` command
+- Visitor methods such as `accept(visitor)`
+
+### 3. Add the Practice 4 features
+
+- Types: `i32`, `i64`, `bool`
+- Literals: `true`, `false`
+- Comparisons: `==`, `!=`
+- Separate `SemanticChecker`
+- Type checking and `i32 → i64` widening
+- LLVM:
+  - `i32`, `i64`, `i1`
+  - `sext`
+  - `icmp`
+  - boolean output using `select`
+- New tests and updated `ai_usage.txt`
+
+## Recommended file structure
+
+```text
+languages-compilers-design/
+├── compiler.py
+├── lexer.py
+├── grammar.ebnf
+├── input.txt
+├── run_tests.sh
+├── ai_usage.txt
+├── README.md
+└── tests/
+    ├── ok/
+    │   ├── task1.txt
+    │   ├── task1.expected
+    │   ├── i64_widen.txt
+    │   ├── i64_widen.expected
+    │   ├── mixed_arithmetic.txt
+    │   ├── mixed_arithmetic.expected
+    │   ├── integer_compare.txt
+    │   ├── integer_compare.expected
+    │   ├── bool_compare.txt
+    │   ├── bool_compare.expected
+    │   ├── bool_exit.txt
+    │   └── bool_exit.expected
+    └── err/
+        ├── bool_arithmetic.txt
+        ├── bool_arithmetic.expected
+        ├── narrowing_initialiser.txt
+        ├── narrowing_initialiser.expected
+        ├── narrowing_assignment.txt
+        ├── narrowing_assignment.expected
+        ├── integer_to_bool.txt
+        ├── integer_to_bool.expected
+        ├── mixed_comparison.txt
+        ├── mixed_comparison.expected
+        ├── constant_overflow.txt
+        ├── constant_overflow.expected
+        ├── single_equals.txt
+        └── single_equals.expected
+```
+
+## Commit in manageable stages
+
+```bash
+git add lexer.py compiler.py grammar.ebnf
+git commit -m "Add parser and typed AST"
+
+git add compiler.py
+git commit -m "Add semantic type checking"
+
+git add compiler.py tests run_tests.sh
+git commit -m "Generate typed LLVM IR and add tests"
+
+git add README.md ai_usage.txt
+git commit -m "Document Practice 4 implementation"
+```
+
+The most important rule: **do not add Practice 4 features directly to the old `compile_program(token_lines)` implementation**. The semantic checks must run on the complete AST before LLVM generation, or Task 2 will not count.[^https://app.notion.com/p/3e773e86a420806f88addab138d297ef]
+
+I can now help you build the complete replacement `lexer.py`, `compiler.py`, grammar, test runner, and all required test files from your current Practice 2 code, in the correct implementation order.
+
+==============================================================================
+USER
+==============================================================================
+
+help me do all that
+
+==============================================================================
+ASSISTANT
+==============================================================================
+
+Completed a combined Practice 3 foundation + Practice 4 implementation. It includes the recursive-descent parser, AST, semantic pass, typed LLVM generation, grammar, documentation, and 18 tests.[^https://app.notion.com/p/3df73e86a42080f886a3faf07135b11b][^https://app.notion.com/p/3e773e86a420806f88addab138d297ef]
+
+<file source="session-file://d689278a-300d-461e-ad05-bfef0769c150">practice4_solution.zip</file>
+
+### Included
+
+- Updated byte-based `lexer.py`
+- Recursive-descent parser and typed AST
+- Correct precedence and left associativity
+- `--ast` mode
+- Separate `SemanticChecker`
+- `i32`, `i64`, and `bool`
+- `true`, `false`, `==`, and `!=`
+- `i32 → i64` widening with LLVM `sext`
+- Comparisons with LLVM `icmp`
+- Integer and boolean output
+- `grammar.ebnf`
+- 8 valid and 10 invalid tests
+- Updated `README.md`
+- Updated `ai_usage.txt`
+- Test runner
+
+All 18 tests passed, and the generated LLVM IR passed verification.
+
+## Put it into your repository
+
+```bash
+cd ~/languages-compilers-design
+git switch practice-2
+git switch -c practice-4
+```
+
+Extract the ZIP, then copy its contents into the repository without replacing `.git`.
+
+Afterward:
+
+```bash
+python3 compiler.py --ast input.txt
+python3 compiler.py input.txt output.ll
+lli output.ll
+./run_tests.sh
+```
+
+Expected main-program output:
+
+```text
+Program exit with result 385
+```
+
+Then inspect the changes and commit:
+
+```bash
+git status
+git add .
+git commit -m "Add parser AST semantic checking and typed code generation"
+git push -u origin practice-4
+```
+
+Before submitting, read through `ai_usage.txt` and adjust it so it accurately describes what you personally reviewed and changed.
+
+==============================================================================
+USER
+==============================================================================
+
+what did u do from practice 3?<br />
+
+==============================================================================
+ASSISTANT
+==============================================================================
+
+From <mention url="https://app.notion.com/p/3df73e86a42080f886a3faf07135b11b">Practice 3</mention>, I implemented all architectural parts needed for Practice 4.[^https://app.notion.com/p/3df73e86a42080f886a3faf07135b11b]
+
+## 1. Recursive-descent parser
+
+Added a `Parser` class with:
+
+```text
+parse_program
+parse_statement
+parse_decl
+parse_assign
+parse_exit
+parse_expr
+parse_arith
+parse_term
+parse_factor
+```
+
+It uses `peek()` and `eat()` and reads the tokens produced by your lexer—not the source text directly.
+
+## 2. Abstract syntax tree
+
+Added these AST classes:
+
+```text
+Node
+├── ProgramNode
+├── DeclNode
+├── AssignNode
+├── ExitNode
+└── ExprNode
+    ├── BinOpNode
+    ├── VarNode
+    ├── ConstNode
+    └── BoolNode
+```
+
+Every node stores its `line` and `column`, allowing later phases to report precise errors.
+
+`BoolNode` is technically a Practice 4 addition.
+
+## 3. Visitor mechanism
+
+Every AST node has:
+
+```python
+node.accept(visitor)
+```
+
+This allows the same tree to be processed independently by:
+
+- `AstPrinter`
+- `SemanticChecker`
+- `CodeGenerator`
+
+This is the main architecture required to prevent checks and LLVM instructions from being mixed together.
+
+## 4. Expression precedence
+
+Implemented the Practice 3 expression hierarchy:
+
+```text
+expression
+└── arithmetic: + and -
+    └── term: *
+        └── factor: constant or variable
+```
+
+Therefore:
+
+```text
+2 + 3 * 4
+```
+
+is parsed as:
+
+```text
+2 + (3 * 4)
+```
+
+Equal-precedence operations are left-associative:
+
+```text
+10 - 3 - 2
+```
+
+becomes:
+
+```text
+(10 - 3) - 2
+```
+
+Practice 4 comparisons were added one level above arithmetic:
+
+```text
+comparison: == and !=
+└── arithmetic
+```
+
+## 5. `--ast` mode
+
+Implemented:
+
+```bash
+python3 compiler.py --ast input.txt
+```
+
+Example output:
+
+```text
+Program
+  Decl x i32 const
+    BinOp +
+      Const 2
+      BinOp *
+        Const 3
+        Const 4
+  Exit
+    Var x
+```
+
+The type shown in `Decl x i32 const` includes the Practice 4 extension.
+
+## 6. Parser errors
+
+The parser reports `line:column` for errors such as:
+
+- invalid statement beginnings;
+- missing `:=`;
+- missing `{}` initialiser;
+- invalid expression operands;
+- extra tokens after a statement;
+- operations where a factor is expected;
+- statements after `exit`;
+- missing `exit`;
+- more than one comparison.
+
+## 7. Tree-based code generation
+
+The old Practice 2 compiler generated LLVM while examining token lists.
+
+I replaced that with:
+
+```text
+tokens → parser → complete AST → walks over AST
+```
+
+The `CodeGenerator` now visits AST nodes:
+
+```text
+visit_program
+visit_decl
+visit_assign
+visit_exit
+visit_binop
+visit_var
+visit_const
+visit_bool
+```
+
+This fulfills the essential Practice 3 requirement that code generation walk the tree rather than process tokens directly.
+
+## 8. Practice 3 grammar
+
+Added `grammar.ebnf`, including:
+
+```text
+program ::= { statement endline | endline } exit [ endline ]
+statement ::= declaration | assignment
+declaration ::= type [ "mut" ] ident "{" expression "}"
+assignment ::= ident ":=" expression
+expression ::= arithmetic [ ( "==" | "!=" ) arithmetic ]
+arithmetic ::= term { ( "+" | "-" ) term }
+term ::= factor { "*" factor }
+factor ::= number | "true" | "false" | ident
+```
+
+It is the Practice 3 grammar expanded with Practice 4 types, booleans, and comparisons.
+
+## Important difference
+
+Practice 3 kept these checks in code generation:
+
+- declared before use;
+- declared only once;
+- only `mut` variables may be assigned.
+
+For Practice 4, I moved them into the separate `SemanticChecker`, as required. So the final code contains the Practice 3 functionality but uses the improved Practice 4 architecture.
+
+==============================================================================
+USER
+==============================================================================
+
+ubuntu@noble3:\~/languages-compilers-design/languages-compilers-design\$ git status<br />On branch practice-4<br />Changes not staged for commit:<br />(use "git add/rm \<file>..." to update what will be committed)<br />(use "git restore \<file>..." to discard changes in working directory)<br />modified:   [README.md](http://readme.md/)<br />modified:   ai\_usage.txt<br />modified:   [compiler.py](http://compiler.py/)<br />modified:   input.txt<br />modified:   [lexer.py](http://lexer.py/)<br />deleted:    lexer\_example.txt<br />modified:   run\_tests.sh<br />deleted:    tests/invalid\_const\_assignment.err<br />deleted:    tests/invalid\_const\_assignment.src<br />deleted:    tests/invalid\_missing\_initializer.err<br />deleted:    tests/invalid\_missing\_initializer.src<br />deleted:    tests/invalid\_unknown.err<br />deleted:    tests/invalid\_unknown.src<br />deleted:    tests/invalid\_unterminated.err<br />deleted:    tests/invalid\_unterminated.src<br />deleted:    tests/invalid\_use\_before.err<br />deleted:    tests/invalid\_use\_before.src<br />deleted:    tests/valid\_const.out<br />deleted:    tests/valid\_const.src<br />deleted:    tests/valid\_exit\_constant.out<br />deleted:    tests/valid\_exit\_constant.src<br />deleted:    tests/valid\_expression.out<br />deleted:    tests/valid\_expression.src<br />deleted:    tests/valid\_mut.out<br />deleted:    tests/valid\_mut.src<br />deleted:    tests/valid\_spacing.out<br />deleted:    tests/valid\_spacing.src<br /><br />Untracked files:<br />(use "git add \<file>..." to include in what will be committed)<br />grammar.ebnf<br />tests/err/<br />tests/ok/<br /><br />no changes added to commit (use "git add" and/or "git commit -a")<br />ubuntu@noble3:\~/languages-compilers-design/languages-compilers-design\$<br /><br />is that fine?
+
+==============================================================================
+ASSISTANT
+==============================================================================
+
+Mostly yes—the modified and untracked files are expected. However, I recommend **restoring the old Practice 2 tests** instead of deleting them. The assignment specifically asks you to demonstrate that earlier programs still work.
+
+Run:
+
+```bash
+git restore -- lexer_example.txt tests
+```
+
+This restores only previously tracked files. Your new untracked directories should remain:
+
+```text
+tests/ok/
+tests/err/
+```
+
+Then check:
+
+```bash
+git status
+```
+
+You should see:
+
+- modified implementation files;
+- new `grammar.ebnf`;
+- new `tests/ok/`;
+- new `tests/err/`;
+- no deleted old tests.
+
+Next run:
+
+```bash
+./run_tests.sh
+python3 compiler.py --ast input.txt
+python3 compiler.py input.txt output.ll
+lli output.ll
+```
+
+Expected final command output:
+
+```text
+Program exit with result 385
+```
+
+If everything passes, stage all changes:
+
+```bash
+git add -A
+git status
+```
+
+Check that no generated `output.ll`, `__pycache__`, or binary files are staged. Then commit:
+
+```bash
+git commit -m "Implement Practice 4 compiler with parser AST and semantic pass"
+```
+
+So: **nothing is broken**, but preserving the old tests is safer and better demonstrates that Practice 2 functionality did not regress.
+
+==============================================================================
+USER
+==============================================================================
+
+ubuntu@noble3:\~/languages-compilers-design/languages-compilers-design\$ ./run\_tests.sh<br />python3 [compiler.py](http://compiler.py/) --ast input.txt<br />python3 [compiler.py](http://compiler.py/) input.txt output.ll<br />lli output.ll<br />-bash: ./run\_tests.sh: Permission denied<br />Traceback (most recent call last):<br />File "/home/ubuntu/languages-compilers-design/languages-compilers-design/compiler.py", line 5, in \<module><br />from llvmlite import ir<br />ModuleNotFoundError: No module named 'llvmlite'<br />Traceback (most recent call last):<br />File "/home/ubuntu/languages-compilers-design/languages-compilers-design/compiler.py", line 5, in \<module><br />from llvmlite import ir<br />ModuleNotFoundError: No module named 'llvmlite'<br />PLEASE submit a bug report to [https://github.com/llvm/llvm-project/issues/](https://github.com/llvm/llvm-project/issues/) and include the crash backtrace.<br />Stack dump:<br />0.      Program arguments: lli output.ll<br />#0 0x00007b6691ba63bf llvm:\:sys\::PrintStackTrace(llvm::raw\_ostream&, int) (/usr/lib/llvm-18/bin/../lib/libLLVM.so.18.1+0xda63bf)<br />#1 0x00007b6691ba44f9 llvm:\:sys\::RunSignalHandlers() (/usr/lib/llvm-18/bin/../lib/libLLVM.so.18.1+0xda44f9)<br />#2 0x00007b6691ba6b00 (/usr/lib/llvm-18/bin/../lib/libLLVM.so.18.1+0xda6b00)<br />#3 0x00007b6690645330 (/lib/x86\_64-linux-gnu/libc.so.6+0x45330)<br />#4 0x00007b669078bc14 (/lib/x86\_64-linux-gnu/libc.so.6+0x18bc14)<br />#5 0x00007b66984677ba (/lib/x86\_64-linux-gnu/libgcc\_s.so.1+0x247ba)<br />#6 0x00007b6698468350 (/lib/x86\_64-linux-gnu/libgcc\_s.so.1+0x25350)<br />#7 0x00007b6698468eca \_\_register\_frame\_info\_bases (/lib/x86\_64-linux-gnu/libgcc\_s.so.1+0x25eca)<br />#8 0x00007b669389cb86 llvm::RTDyldMemoryManager::registerEHFrames(unsigned char\*, unsigned long, unsigned long) (/usr/lib/llvm-18/bin/../lib/libLLVM.so.18.1+0x2a9cb86)<br />#9 0x00007b66938b2666 (/usr/lib/llvm-18/bin/../lib/libLLVM.so.18.1+0x2ab2666)<br />#10 0x00007b66938a347e (/usr/lib/llvm-18/bin/../lib/libLLVM.so.18.1+0x2aa347e)<br />#11 0x00007b66938a6255 (/usr/lib/llvm-18/bin/../lib/libLLVM.so.18.1+0x2aa6255)<br />#12 0x00007b6693873431 (/usr/lib/llvm-18/bin/../lib/libLLVM.so.18.1+0x2a73431)<br />#13 0x00007b66937e55b0 (/usr/lib/llvm-18/bin/../lib/libLLVM.so.18.1+0x29e55b0)<br />#14 0x00007b66937e96a0 (/usr/lib/llvm-18/bin/../lib/libLLVM.so.18.1+0x29e96a0)<br />#15 0x00007b66937c963f llvm:\:orc\::AsynchronousSymbolQuery::handleComplete(llvm:\:orc\::ExecutionSession&) (/usr/lib/llvm-18/bin/../lib/libLLVM.so.18.1+0x29c963f)<br />#16 0x00007b66937d157d llvm:\:orc\::JITDylib::resolve(llvm:\:orc\::MaterializationResponsibility&, llvm::DenseMap\<llvm:\:orc\::SymbolStringPtr, llvm:\:orc\::ExecutorSymbolDef, llvm::DenseMapInfo\<llvm:\:orc\::SymbolStringPtr, void>, llvm:\:detail\::DenseMapPair\<llvm:\:orc\::SymbolStringPtr, llvm:\:orc\::ExecutorSymbolDef>> const&) (/usr/lib/llvm-18/bin/../lib/libLLVM.so.18.1+0x29d157d)<br />#17 0x00007b66937ca1c4 llvm:\:orc\::AbsoluteSymbolsMaterializationUnit::materialize(std::unique\_ptr\<llvm:\:orc\::MaterializationResponsibility, std:\:default_deletellvm\:\:orc\::MaterializationResponsibility>) (/usr/lib/llvm-18/bin/../lib/libLLVM.so.18.1+0x29ca1c4)<br />#18 0x00007b66937d91da llvm:\:orc\::MaterializationTask::run() (/usr/lib/llvm-18/bin/../lib/libLLVM.so.18.1+0x29d91da)<br />#19 0x00007b66937e96a0 (/usr/lib/llvm-18/bin/../lib/libLLVM.so.18.1+0x29e96a0)<br />#20 0x00007b66937db287 llvm:\:orc\::ExecutionSession::dispatchOutstandingMUs() (/usr/lib/llvm-18/bin/../lib/libLLVM.so.18.1+0x29db287)<br />#21 0x00007b66937de631 llvm:\:orc\::ExecutionSession::OL\_completeLookup(std::unique\_ptr\<llvm:\:orc\::InProgressLookupState, std:\:default_deletellvm\:\:orc\::InProgressLookupState>, std:\:shared_ptrllvm\:\:orc\::AsynchronousSymbolQuery, std::function\<void (llvm::DenseMap\<llvm:\:orc\::JITDylib\*, llvm::DenseSet\<llvm:\:orc\::SymbolStringPtr, llvm::DenseMapInfo\<llvm:\:orc\::SymbolStringPtr, void>>, llvm::DenseMapInfo\<llvm:\:orc\::JITDylib\*, void>, llvm:\:detail\::DenseMapPair\<llvm:\:orc\::JITDylib\*, llvm::DenseSet\<llvm:\:orc\::SymbolStringPtr, llvm::DenseMapInfo\<llvm:\:orc\::SymbolStringPtr, void>>>> const&)>) (/usr/lib/llvm-18/bin/../lib/libLLVM.so.18.1+0x29de631)<br />#22 0x00007b66937ea811 (/usr/lib/llvm-18/bin/../lib/libLLVM.so.18.1+0x29ea811)<br />#23 0x00007b66937cdedf llvm:\:orc\::ExecutionSession::OL\_applyQueryPhase1(std::unique\_ptr\<llvm:\:orc\::InProgressLookupState, std:\:default_deletellvm\:\:orc\::InProgressLookupState>, llvm::Error) (/usr/lib/llvm-18/bin/../lib/libLLVM.so.18.1+0x29cdedf)<br />#24 0x00007b66937cbde7 llvm:\:orc\::ExecutionSession::lookup(llvm:\:orc\::LookupKind, std::vector\<std::pair\<llvm:\:orc\::JITDylib\*, llvm:\:orc\::JITDylibLookupFlags>, std::allocator\<std::pair\<llvm:\:orc\::JITDylib\*, llvm:\:orc\::JITDylibLookupFlags>>> const&, llvm:\:orc\::SymbolLookupSet, llvm:\:orc\::SymbolState, llvm::unique\_function\<void (llvm::Expected\<llvm::DenseMap\<llvm:\:orc\::SymbolStringPtr, llvm:\:orc\::ExecutorSymbolDef, llvm::DenseMapInfo\<llvm:\:orc\::SymbolStringPtr, void>, llvm:\:detail\::DenseMapPair\<llvm:\:orc\::SymbolStringPtr, llvm:\:orc\::ExecutorSymbolDef>>>)>, std::function\<void (llvm::DenseMap\<llvm:\:orc\::JITDylib\*, llvm::DenseSet\<llvm:\:orc\::SymbolStringPtr, llvm::DenseMapInfo\<llvm:\:orc\::SymbolStringPtr, void>>, llvm::DenseMapInfo\<llvm:\:orc\::JITDylib\*, void>, llvm:\:detail\::DenseMapPair\<llvm:\:orc\::JITDylib\*, llvm::DenseSet\<llvm:\:orc\::SymbolStringPtr, llvm::DenseMapInfo\<llvm:\:orc\::SymbolStringPtr, void>>>> const&)>) (/usr/lib/llvm-18/bin/../lib/libLLVM.so.18.1+0x29cbde7)<br />#25 0x00007b6693872d5c (/usr/lib/llvm-18/bin/../lib/libLLVM.so.18.1+0x2a72d5c)<br />#26 0x00007b66938a30fb llvm::RuntimeDyldImpl::finalizeAsync(std::unique\_ptr\<llvm::RuntimeDyldImpl, std:\:default_deletellvm\::RuntimeDyldImpl>, llvm::unique\_function\<void (llvm:\:object\::OwningBinaryllvm:\:object\::ObjectFile, std::unique\_ptr\<llvm::RuntimeDyld::LoadedObjectInfo, std:\:default_deletellvm\::RuntimeDyld::LoadedObjectInfo>, llvm::Error)>, llvm:\:object\::OwningBinaryllvm:\:object\::ObjectFile, std::unique\_ptr\<llvm::RuntimeDyld::LoadedObjectInfo, std:\:default_deletellvm\::RuntimeDyld::LoadedObjectInfo>) (/usr/lib/llvm-18/bin/../lib/libLLVM.so.18.1+0x2aa30fb)<br />#27 0x00007b66938a476a llvm::jitLinkForORC(llvm:\:object\::OwningBinaryllvm:\:object\::ObjectFile, llvm::RuntimeDyld::MemoryManager&, llvm::JITSymbolResolver&, bool, llvm::unique\_function\<llvm::Error (llvm:\:object\::ObjectFile const&, llvm::RuntimeDyld::LoadedObjectInfo&, std::map\<llvm::StringRef, llvm::JITEvaluatedSymbol, std:\:lessllvm\::StringRef, std::allocator\<std::pair\<llvm::StringRef const, llvm::JITEvaluatedSymbol>>>)>, llvm::unique\_function\<void (llvm:\:object\::OwningBinaryllvm:\:object\::ObjectFile, std::unique\_ptr\<llvm::RuntimeDyld::LoadedObjectInfo, std:\:default_deletellvm\::RuntimeDyld::LoadedObjectInfo>, llvm::Error)>) (/usr/lib/llvm-18/bin/../lib/libLLVM.so.18.1+0x2aa476a)<br />#28 0x00007b66938707e3 llvm:\:orc\::RTDyldObjectLinkingLayer::emit(std::unique\_ptr\<llvm:\:orc\::MaterializationResponsibility, std:\:default_deletellvm\:\:orc\::MaterializationResponsibility>, std::unique\_ptr\<llvm::MemoryBuffer, std:\:default_deletellvm\::MemoryBuffer>) (/usr/lib/llvm-18/bin/../lib/libLLVM.so.18.1+0x2a707e3)<br />#29 0x00007b66938686f8 llvm:\:orc\::ObjectTransformLayer::emit(std::unique\_ptr\<llvm:\:orc\::MaterializationResponsibility, std:\:default_deletellvm\:\:orc\::MaterializationResponsibility>, std::unique\_ptr\<llvm::MemoryBuffer, std:\:default_deletellvm\::MemoryBuffer>) (/usr/lib/llvm-18/bin/../lib/libLLVM.so.18.1+0x2a686f8)<br />#30 0x00007b669381e286 llvm:\:orc\::IRCompileLayer::emit(std::unique\_ptr\<llvm:\:orc\::MaterializationResponsibility, std:\:default_deletellvm\:\:orc\::MaterializationResponsibility>, llvm:\:orc\::ThreadSafeModule) (/usr/lib/llvm-18/bin/../lib/libLLVM.so.18.1+0x2a1e286)<br />#31 0x00007b669381e7a4 llvm:\:orc\::IRTransformLayer::emit(std::unique\_ptr\<llvm:\:orc\::MaterializationResponsibility, std:\:default_deletellvm\:\:orc\::MaterializationResponsibility>, llvm:\:orc\::ThreadSafeModule) (/usr/lib/llvm-18/bin/../lib/libLLVM.so.18.1+0x2a1e7a4)<br />#32 0x00007b669381e7a4 llvm:\:orc\::IRTransformLayer::emit(std::unique\_ptr\<llvm:\:orc\::MaterializationResponsibility, std:\:default_deletellvm\:\:orc\::MaterializationResponsibility>, llvm:\:orc\::ThreadSafeModule) (/usr/lib/llvm-18/bin/../lib/libLLVM.so.18.1+0x2a1e7a4)<br />#33 0x00007b6693825555 llvm:\:orc\::BasicIRLayerMaterializationUnit::materialize(std::unique\_ptr\<llvm:\:orc\::MaterializationResponsibility, std:\:default_deletellvm\:\:orc\::MaterializationResponsibility>) (/usr/lib/llvm-18/bin/../lib/libLLVM.so.18.1+0x2a25555)<br />#34 0x00007b66937d91da llvm:\:orc\::MaterializationTask::run() (/usr/lib/llvm-18/bin/../lib/libLLVM.so.18.1+0x29d91da)<br />#35 0x00007b66937e96a0 (/usr/lib/llvm-18/bin/../lib/libLLVM.so.18.1+0x29e96a0)<br />#36 0x00007b66937db287 llvm:\:orc\::ExecutionSession::dispatchOutstandingMUs() (/usr/lib/llvm-18/bin/../lib/libLLVM.so.18.1+0x29db287)<br />#37 0x00007b66937de631 llvm:\:orc\::ExecutionSession::OL\_completeLookup(std::unique\_ptr\<llvm:\:orc\::InProgressLookupState, std:\:default_deletellvm\:\:orc\::InProgressLookupState>, std:\:shared_ptrllvm\:\:orc\::AsynchronousSymbolQuery, std::function\<void (llvm::DenseMap\<llvm:\:orc\::JITDylib\*, llvm::DenseSet\<llvm:\:orc\::SymbolStringPtr, llvm::DenseMapInfo\<llvm:\:orc\::SymbolStringPtr, void>>, llvm::DenseMapInfo\<llvm:\:orc\::JITDylib\*, void>, llvm:\:detail\::DenseMapPair\<llvm:\:orc\::JITDylib\*, llvm::DenseSet\<llvm:\:orc\::SymbolStringPtr, llvm::DenseMapInfo\<llvm:\:orc\::SymbolStringPtr, void>>>> const&)>) (/usr/lib/llvm-18/bin/../lib/libLLVM.so.18.1+0x29de631)<br />#38 0x00007b66937ea811 (/usr/lib/llvm-18/bin/../lib/libLLVM.so.18.1+0x29ea811)<br />#39 0x00007b66937cdedf llvm:\:orc\::ExecutionSession::OL\_applyQueryPhase1(std::unique\_ptr\<llvm:\:orc\::InProgressLookupState, std:\:default_deletellvm\:\:orc\::InProgressLookupState>, llvm::Error) (/usr/lib/llvm-18/bin/../lib/libLLVM.so.18.1+0x29cdedf)<br />#40 0x00007b66937cbde7 llvm:\:orc\::ExecutionSession::lookup(llvm:\:orc\::LookupKind, std::vector\<std::pair\<llvm:\:orc\::JITDylib\*, llvm:\:orc\::JITDylibLookupFlags>, std::allocator\<std::pair\<llvm:\:orc\::JITDylib\*, llvm:\:orc\::JITDylibLookupFlags>>> const&, llvm:\:orc\::SymbolLookupSet, llvm:\:orc\::SymbolState, llvm::unique\_function\<void (llvm::Expected\<llvm::DenseMap\<llvm:\:orc\::SymbolStringPtr, llvm:\:orc\::ExecutorSymbolDef, llvm::DenseMapInfo\<llvm:\:orc\::SymbolStringPtr, void>, llvm:\:detail\::DenseMapPair\<llvm:\:orc\::SymbolStringPtr, llvm:\:orc\::ExecutorSymbolDef>>>)>, std::function\<void (llvm::DenseMap\<llvm:\:orc\::JITDylib\*, llvm::DenseSet\<llvm:\:orc\::SymbolStringPtr, llvm::DenseMapInfo\<llvm:\:orc\::SymbolStringPtr, void>>, llvm::DenseMapInfo\<llvm:\:orc\::JITDylib\*, void>, llvm:\:detail\::DenseMapPair\<llvm:\:orc\::JITDylib\*, llvm::DenseSet\<llvm:\:orc\::SymbolStringPtr, llvm::DenseMapInfo\<llvm:\:orc\::SymbolStringPtr, void>>>> const&)>) (/usr/lib/llvm-18/bin/../lib/libLLVM.so.18.1+0x29cbde7)<br />#41 0x00007b66937db46e llvm:\:orc\::ExecutionSession::lookup(std::vector\<std::pair\<llvm:\:orc\::JITDylib\*, llvm:\:orc\::JITDylibLookupFlags>, std::allocator\<std::pair\<llvm:\:orc\::JITDylib\*, llvm:\:orc\::JITDylibLookupFlags>>> const&, llvm:\:orc\::SymbolLookupSet, llvm:\:orc\::LookupKind, llvm:\:orc\::SymbolState, std::function\<void (llvm::DenseMap\<llvm:\:orc\::JITDylib\*, llvm::DenseSet\<llvm:\:orc\::SymbolStringPtr, llvm::DenseMapInfo\<llvm:\:orc\::SymbolStringPtr, void>>, llvm::DenseMapInfo\<llvm:\:orc\::JITDylib\*, void>, llvm:\:detail\::DenseMapPair\<llvm:\:orc\::JITDylib\*, llvm::DenseSet\<llvm:\:orc\::SymbolStringPtr, llvm::DenseMapInfo\<llvm:\:orc\::SymbolStringPtr, void>>>> const&)>) (/usr/lib/llvm-18/bin/../lib/libLLVM.so.18.1+0x29db46e)<br />#42 0x00007b66937db9ea llvm:\:orc\::ExecutionSession::lookup(std::vector\<std::pair\<llvm:\:orc\::JITDylib\*, llvm:\:orc\::JITDylibLookupFlags>, std::allocator\<std::pair\<llvm:\:orc\::JITDylib\*, llvm:\:orc\::JITDylibLookupFlags>>> const&, llvm:\:orc\::SymbolStringPtr, llvm:\:orc\::SymbolState) (/usr/lib/llvm-18/bin/../lib/libLLVM.so.18.1+0x29db9ea)<br />#43 0x00007b6693829301 llvm:\:orc\::LLJIT::lookupLinkerMangled(llvm:\:orc\::JITDylib&, llvm:\:orc\::SymbolStringPtr) (/usr/lib/llvm-18/bin/../lib/libLLVM.so.18.1+0x2a29301)<br />#44 0x000056513a8ed86a (/usr/lib/llvm-18/bin/lli+0x1f86a)<br />#45 0x000056513a8e5566 runOrcJIT(char const\*) (/usr/lib/llvm-18/bin/lli+0x17566)<br />#46 0x000056513a8e0d19 main (/usr/lib/llvm-18/bin/lli+0x12d19)<br />#47 0x00007b669062a1ca (/lib/x86\_64-linux-gnu/libc.so.6+0x2a1ca)<br />#48 0x00007b669062a28b \_\_libc\_start\_main (/lib/x86\_64-linux-gnu/libc.so.6+0x2a28b)<br />#49 0x000056513a8de6e5 \_start (/usr/lib/llvm-18/bin/lli+0x106e5)<br />Segmentation fault (core dumped)<br />ubuntu@noble3:\~/languages-compilers-design/languages-compilers-design\$
+
+==============================================================================
+ASSISTANT
+==============================================================================
+
+There are **three separate issues**, and none means the compiler code is broken:
+
+1. `run_tests.sh` lost executable permission.
+2. `llvmlite` is not installed in the active Python environment.
+3. `lli` ran an **old/stale `output.ll`** because compilation failed before generating a new one.
+
+Run these commands one by one from the repository.
+
+## 1. Make the test runner executable
+
+```bash
+chmod +x run_tests.sh
+```
+
+## 2. Create a Python virtual environment
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python3 -m pip install --upgrade pip
+python3 -m pip install llvmlite
+```
+
+If creating the environment says that `venv` is unavailable:
+
+```bash
+sudo apt update
+sudo apt install -y python3-venv
+```
+
+Then repeat the virtual-environment commands.
+
+Verify the installation:
+
+```bash
+python3 -c "import llvmlite; print(llvmlite.__version__)"
+```
+
+It should print a version without an error.
+
+## 3. Remove the stale LLVM file
+
+```bash
+rm -f output.ll
+```
+
+The `lli` crash occurred because `compiler.py` failed before producing new IR, but the old `output.ll` remained. Do not run `lli` when the preceding compilation fails.
+
+## 4. Run each check separately
+
+First, print the AST:
+
+```bash
+python3 compiler.py --ast input.txt
+```
+
+Then compile:
+
+```bash
+python3 compiler.py input.txt output.ll
+```
+
+Confirm that compilation succeeded and the file exists:
+
+```bash
+ls -l output.ll
+```
+
+Only then run:
+
+```bash
+lli output.ll
+```
+
+Expected output:
+
+```text
+Program exit with result 385
+```
+
+Finally:
+
+```bash
+./run_tests.sh
+```
+
+Expected ending:
+
+```text
+Passed: 18
+Failed: 0
+```
+
+## 5. Preserve the executable permission in Git
+
+After successful tests:
+
+```bash
+git add -A
+git status
+```
+
+Git should record something similar to:
+
+```text
+mode change 100644 => 100755 run_tests.sh
+```
+
+Do **not** add `.venv` to Git. Check that `.gitignore` contains:
+
+```text
+.venv/
+```
+
+If it does not:
+
+```bash
+echo '.venv/' >> .gitignore
+```
+
+==============================================================================
+USER
+==============================================================================
+
+(.venv) ubuntu@noble3:\~/languages-compilers-design/languages-compilers-design\$ python3 -c "import llvmlite; print(llvmlite.<b>version</b>)"<br />0.49.0<br />(.venv) ubuntu@noble3:\~/languages-compilers-design/languages-compilers-design\$ rm -f output.ll<br />(.venv) ubuntu@noble3:\~/languages-compilers-design/languages-compilers-design\$ python3 [compiler.py](http://compiler.py/) --ast input.txt<br />Program<br />Decl a i64 const<br />Const 10<br />Decl b bool const<br />Bool true<br />Decl c bool const<br />Bool false<br />Decl d bool const<br />BinOp ==<br />Var a<br />Const 10<br />Decl e bool mut<br />BinOp !=<br />Var a<br />Const 10<br />Assign e<br />BinOp ==<br />Var b<br />Var d<br />Decl x i32 const<br />Const 15<br />Decl y i64 mut<br />Var x<br />Decl z i64 const<br />BinOp +<br />Var x<br />Const 10<br />Assign y<br />BinOp +<br />BinOp \*<br />Var y<br />Var z<br />Var a<br />Exit<br />Var y<br />(.venv) ubuntu@noble3:\~/languages-compilers-design/languages-compilers-design\$ python3 [compiler.py](http://compiler.py/) input.txt output.ll<br />(.venv) ubuntu@noble3:\~/languages-compilers-design/languages-compilers-design\$ ls -l output.ll<br />-rw-rw-rw- 1 ubuntu ubuntu 1909 Sep 28 19:20 output.ll<br />(.venv) ubuntu@noble3:\~/languages-compilers-design/languages-compilers-design\$ lli output.ll<br />Program exit with result 385<br />(.venv) ubuntu@noble3:\~/languages-compilers-design/languages-compilers-design\$ ./run\_tests.sh<br />-bash: ./run\_tests.sh: Permission denied<br />(.venv) ubuntu@noble3:\~/languages-compilers-design/languages-compilers-design\$
+
+==============================================================================
+ASSISTANT
+==============================================================================
+
+Great—the compiler, AST, LLVM generation, and execution all work correctly. You only need to fix the script permission.
+
+Run:
+
+```bash
+chmod +x run_tests.sh
+```
+
+Verify:
+
+```bash
+ls -l run_tests.sh
+```
+
+It should begin with something like:
+
+```text
+-rwxr-xr-x
+```
+
+Then run:
+
+```bash
+./run_tests.sh
+```
+
+Expected ending:
+
+```text
+Passed: 18
+Failed: 0
+```
+
+Alternatively, even without executable permission, you can run it with:
+
+```bash
+bash run_tests.sh
+```
+
+After the tests pass, ensure temporary files are ignored:
+
+```bash
+printf '\n.venv/\ncore\ncore.*\n' >> .gitignore
+rm -f core core.*
+```
+
+Then prepare the commit:
+
+```bash
+git add -A
+git status
+```
+
+Do not stage `.venv/`, `output.ll`, or crash dump files. The important functionality is already confirmed: the AST prints, compilation succeeds, and the program produces `385`.
+
+==============================================================================
+USER
+==============================================================================
+
+(.venv) ubuntu@noble3:\~/languages-compilers-design/languages-compilers-design\$ ls -l run\_tests.sh<br />(.venv) ubuntu@noble3:\~/languages-compilers-design/languages-compilers-design\$
+
+==============================================================================
+ASSISTANT
+==============================================================================
+
+It looks like the command produced no output, so first confirm the file’s exact name:
+
+```bash
+pwd
+find . -maxdepth 1 -type f -name '*test*' -printf '%f\n'
+```
+
+If it shows `run_tests.sh`, run:
+
+```bash
+chmod 755 ./run_tests.sh
+ls -l ./run_tests.sh
+./run_tests.sh
+```
+
+If the file still cannot be found, check all top-level files:
+
+```bash
+ls -la
+```
+
+You can also run the test script without changing permissions:
+
+```bash
+bash ./run_tests.sh
+```
+
+Make sure you type `run_tests.sh` with a normal underscore `_`; do not copy any visible backslash from formatted text.
+
+==============================================================================
+USER
+==============================================================================
+
+(.venv) ubuntu@noble3:\~/languages-compilers-design/languages-compilers-design\$ pwd<br />find . -maxdepth 1 -type f -name '<i>test</i>' -printf '%f\\n'<br />/home/ubuntu/languages-compilers-design/languages-compilers-design<br />run\_tests.sh<br />(.venv) ubuntu@noble3:\~/languages-compilers-design/languages-compilers-design\$ chmod 755 ./run\_tests.sh<br />ls -l ./run\_tests.sh<br />./run\_tests.sh<br />-rw-rw-rw- 1 ubuntu ubuntu 1416 Sep 28 18:18 ./run\_tests.sh<br />-bash: ./run\_tests.sh: Permission denied<br />(.venv) ubuntu@noble3:\~/languages-compilers-design/languages-compilers-design\$
+
+==============================================================================
+ASSISTANT
+==============================================================================
+
+Your filesystem is not applying executable permission changes—the mode remains `-rw-rw-rw-`. That is an environment/mount issue, not a problem with the script.
+
+Run it explicitly through Bash:
+
+```bash
+bash ./run_tests.sh
+```
+
+That should execute all tests.
+
+To record the executable permission in Git even if the filesystem ignores it:
+
+```bash
+git add run_tests.sh
+git update-index --chmod=+x run_tests.sh
+git diff --cached --summary
+```
+
+You should see:
+
+```text
+mode change 100644 => 100755 run_tests.sh
+```
+
+For now, use:
+
+```bash
+bash ./run_tests.sh
+```
+
+and send me the final `Passed` / `Failed` output.
+
+==============================================================================
+USER
+==============================================================================
+
+(.venv) ubuntu@noble3:\~/languages-compilers-design/languages-compilers-design\$ bash ./run\_tests.sh<br />Running valid tests...<br />PASS: tests/ok/bool\_compare.txt<br />PASS: tests/ok/bool\_exit.txt<br />PASS: tests/ok/i64\_constant.txt<br />PASS: tests/ok/i64\_widen.txt<br />PASS: tests/ok/integer\_compare.txt<br />PASS: tests/ok/mixed\_arithmetic.txt<br />PASS: tests/ok/precedence.txt<br />PASS: tests/ok/task1.txt<br /><br />Running invalid tests...<br />PASS: tests/err/bool\_arithmetic.txt<br />PASS: tests/err/const\_assignment.txt<br />PASS: tests/err/constant\_i32\_overflow.txt<br />PASS: tests/err/constant\_i64\_overflow.txt<br />PASS: tests/err/integer\_to\_bool.txt<br />PASS: tests/err/mixed\_comparison.txt<br />PASS: tests/err/narrowing\_assignment.txt<br />PASS: tests/err/narrowing\_initialiser.txt<br />PASS: tests/err/single\_equals.txt<br />PASS: tests/err/use\_before\_declaration.txt<br /><br />Passed: 18<br />Failed: 0<br />(.venv) ubuntu@noble3:\~/languages-compilers-design/languages-compilers-design\$
+
+==============================================================================
+ASSISTANT
+==============================================================================
+
+Excellent—**all 18 tests pass**. The compiler is working correctly:
+
+- 8 valid programs compile and run.
+- 10 invalid programs are rejected with expected errors.
+- AST generation works.
+- LLVM compilation works.
+- Main program prints `385`.
+
+## Prepare the commit
+
+Ensure local files are ignored:
+
+```bash
+printf '\n.venv/\ncore\ncore.*\n' >> .gitignore
+rm -f core core.*
+```
+
+Stage everything:
+
+```bash
+git add -A
+git update-index --chmod=+x run_tests.sh
+git status
+```
+
+Confirm that `.venv/`, `output.ll`, and `core` are **not** staged.
+
+Then commit and push:
+
+```bash
+git commit -m "Implement Practice 4 compiler with parser AST and semantic pass"
+git push -u origin practice-4
+```
+
+## What to demonstrate to the teacher
+
+### AST
+
+```bash
+python3 compiler.py --ast tests/ok/task1.txt
+```
+
+### Result `385`
+
+```bash
+python3 compiler.py tests/ok/task1.txt output.ll
+lli output.ll
+```
+
+### Boolean result
+
+```bash
+python3 compiler.py tests/ok/bool_compare.txt output.ll
+lli output.ll
+```
+
+Expected:
+
+```text
+Program exit with result true
+```
+
+### Widening instruction
+
+```bash
+python3 compiler.py tests/ok/i64_widen.txt output.ll
+grep sext output.ll
+```
+
+### Full test suite
+
+```bash
+bash run_tests.sh
+```
+
+Before committing, quickly read `ai_usage.txt` and make sure it accurately states what you reviewed and changed yourself.
+
+==============================================================================
+USER
+==============================================================================
+
+(.venv) ubuntu@noble3:\~/languages-compilers-design/languages-compilers-design\$ python3 [compiler.py](http://compiler.py/) --ast tests/ok/task1.txt<br />Program<br />Decl a i64 const<br />Const 10<br />Decl b bool const<br />Bool true<br />Decl c bool const<br />Bool false<br />Decl d bool const<br />BinOp ==<br />Var a<br />Const 10<br />Decl e bool mut<br />BinOp !=<br />Var a<br />Const 10<br />Assign e<br />BinOp ==<br />Var b<br />Var d<br />Decl x i32 const<br />Const 15<br />Decl y i64 mut<br />Var x<br />Decl z i64 const<br />BinOp +<br />Var x<br />Const 10<br />Assign y<br />BinOp +<br />BinOp \*<br />Var y<br />Var z<br />Var a<br />Exit<br />Var y<br />(.venv) ubuntu@noble3:\~/languages-compilers-design/languages-compilers-design\$ python3 [compiler.py](http://compiler.py/) tests/ok/task1.txt output.ll<br />lli output.ll<br />Program exit with result 385<br />(.venv) ubuntu@noble3:\~/languages-compilers-design/languages-compilers-design\$ python3 [compiler.py](http://compiler.py/) tests/ok/bool\_compare.txt output.ll<br />lli output.ll<br />Program exit with result true<br />(.venv) ubuntu@noble3:\~/languages-compilers-design/languages-compilers-design\$ python3 [compiler.py](http://compiler.py/) tests/ok/i64\_widen.txt output.ll<br />grep sext output.ll<br />%"wide" = sext i32 %"x.value" to i64<br />(.venv) ubuntu@noble3:\~/languages-compilers-design/languages-compilers-design\$ bash run\_tests.sh<br />Running valid tests...<br />PASS: tests/ok/bool\_compare.txt<br />PASS: tests/ok/bool\_exit.txt<br />PASS: tests/ok/i64\_constant.txt<br />PASS: tests/ok/i64\_widen.txt<br />PASS: tests/ok/integer\_compare.txt<br />PASS: tests/ok/mixed\_arithmetic.txt<br />PASS: tests/ok/precedence.txt<br />PASS: tests/ok/task1.txt<br /><br />Running invalid tests...<br />PASS: tests/err/bool\_arithmetic.txt<br />PASS: tests/err/const\_assignment.txt<br />PASS: tests/err/constant\_i32\_overflow.txt<br />PASS: tests/err/constant\_i64\_overflow.txt<br />PASS: tests/err/integer\_to\_bool.txt<br />PASS: tests/err/mixed\_comparison.txt<br />PASS: tests/err/narrowing\_assignment.txt<br />PASS: tests/err/narrowing\_initialiser.txt<br />PASS: tests/err/single\_equals.txt<br />PASS: tests/err/use\_before\_declaration.txt<br /><br />Passed: 18<br />Failed: 0<br />(.venv) ubuntu@noble3:\~/languages-compilers-design/languages-compilers-design\$<br /><br /><br />explain everything
+
+==============================================================================
+ASSISTANT
+==============================================================================
+
+Everything required is now working. Here is how the compiler is structured, what each part does, and how your demonstrated outputs prove it.
+
+The implementation combines the necessary architecture from <mention url="https://app.notion.com/p/3df73e86a42080f886a3faf07135b11b">Practice 3</mention> with all requirements from <mention url="https://app.notion.com/p/3e773e86a420806f88addab138d297ef">Practice 4</mention>.[^https://app.notion.com/p/3df73e86a42080f886a3faf07135b11b][^https://app.notion.com/p/3e773e86a420806f88addab138d297ef]
+
+# 1. Complete compiler pipeline
+
+Your compiler now uses this sequence:
+
+```text
+Source code
+    ↓
+Lexer
+    ↓
+Tokens
+    ↓
+Parser
+    ↓
+Abstract syntax tree
+    ↓
+Semantic checker
+    ↓
+Checked and annotated tree
+    ↓
+LLVM code generator
+    ↓
+output.ll
+    ↓
+lli
+    ↓
+Program result
+```
+
+This separation is the central purpose of Practices 3 and 4.
+
+Before this change, your Practice 2 compiler approximately did:
+
+```text
+Tokens → checks and LLVM generation at the same time
+```
+
+Now syntax analysis, semantic analysis, and code generation are separate phases.
+
+---
+
+# 2. Lexer
+
+File:
+
+```text
+lexer.py
+```
+
+The lexer reads the source as raw bytes and converts characters into tokens.
+
+For example:
+
+```text
+i64 mut y{x + 10}
+```
+
+becomes approximately:
+
+```text
+keyword     i64
+keyword     mut
+identifier  y
+block       {
+identifier  x
+operator    +
+number      10
+block       }
+```
+
+## Keywords
+
+The lexer recognizes:
+
+```text
+i32
+i64
+bool
+mut
+exit
+true
+false
+```
+
+If a word is not one of these keywords, it becomes an identifier.
+
+For example:
+
+```text
+result
+my_variable
+x2
+```
+
+## Operators
+
+It supports:
+
+```text
++
+-
+*
+:=
+==
+!=
+```
+
+`==` and `!=` use dedicated lexer states. A single `=` or `!` is rejected immediately.
+
+Example:
+
+```text
+x = 2
+```
+
+produces:
+
+```text
+compilation error: line 1:3:
+expected '==' (a single '=' is not an operator)
+```
+
+This is a **lexical error** because the invalid character sequence is detected before parsing.
+
+---
+
+# 3. Abstract syntax tree
+
+The parser does not generate LLVM directly. It first constructs an abstract syntax tree, or AST.
+
+The main node classes are:
+
+```text
+Node
+├── ProgramNode
+├── DeclNode
+├── AssignNode
+├── ExitNode
+└── ExprNode
+    ├── BinOpNode
+    ├── VarNode
+    ├── ConstNode
+    └── BoolNode
+```
+
+## `ProgramNode`
+
+Represents the complete program:
+
+```python
+ProgramNode(
+    statements,
+    exit_node,
+)
+```
+
+It contains all declarations and assignments, followed by exactly one `exit`.
+
+## `DeclNode`
+
+Represents declarations:
+
+```text
+i64 mut y{x}
+```
+
+It stores:
+
+```text
+name       = y
+type_name  = i64
+mutable    = true
+init       = VarNode("x")
+```
+
+## `AssignNode`
+
+Represents assignments:
+
+```text
+y := y * z + a
+```
+
+It stores:
+
+```text
+name  = y
+value = expression tree for y * z + a
+```
+
+## Expression nodes
+
+Examples:
+
+```text
+10       → ConstNode
+true     → BoolNode
+x        → VarNode
+x + 10   → BinOpNode
+```
+
+Every node also stores its source `line` and `column`. Therefore semantic errors can identify the exact location without needing the original tokens.
+
+---
+
+# 4. Recursive-descent parser
+
+The `Parser` class converts tokens into the AST.
+
+Its primary methods are:
+
+```text
+parse_program
+parse_statement
+parse_decl
+parse_assign
+parse_exit
+parse_expr
+parse_arith
+parse_term
+parse_factor
+```
+
+It uses:
+
+```python
+peek()
+eat()
+```
+
+- `peek()` inspects the current token without consuming it.
+- `eat()` consumes the current token and advances to the next one.
+
+This is a hand-written recursive-descent parser, as required by Practice 3.
+
+## Grammar levels
+
+The relevant expression grammar is:
+
+```text
+expression ::= arithmetic [ ("==" | "!=") arithmetic ]
+arithmetic ::= term { ("+" | "-") term }
+term       ::= factor { "*" factor }
+factor     ::= number | "true" | "false" | identifier
+```
+
+Each grammar level corresponds to a parser method.
+
+## Precedence
+
+Because `parse_arith()` calls `parse_term()` first, multiplication binds more strongly than addition.
+
+This:
+
+```text
+2 + 3 * 4
+```
+
+becomes:
+
+```text
+BinOp +
+  Const 2
+  BinOp *
+    Const 3
+    Const 4
+```
+
+Therefore, the result is:
+
+```text
+2 + 12 = 14
+```
+
+not:
+
+```text
+5 * 4 = 20
+```
+
+## Left associativity
+
+This:
+
+```text
+10 - 3 - 2
+```
+
+becomes:
+
+```text
+(10 - 3) - 2
+```
+
+The parser creates the new binary node using the expression already parsed as its left child.
+
+## Comparisons
+
+Comparison has lower precedence than arithmetic.
+
+This:
+
+```text
+x * 2 != y + 5
+```
+
+becomes conceptually:
+
+```text
+(x * 2) != (y + 5)
+```
+
+Only one comparison is allowed in an expression.
+
+---
+
+# 5. AST printer
+
+The `AstPrinter` is the first visitor over the tree.
+
+This command:
+
+```bash
+python3 compiler.py --ast tests/ok/task1.txt
+```
+
+runs only:
+
+```text
+lexer → parser → AST printer
+```
+
+It does not generate LLVM.
+
+Your output begins with:
+
+```text
+Program
+  Decl a i64 const
+    Const 10
+```
+
+This means:
+
+```text
+i64 a{10}
+```
+
+was parsed as:
+
+- declaration named `a`;
+- declared type `i64`;
+- immutable because it has no `mut`;
+- initializer is constant `10`.
+
+This part:
+
+```text
+Decl d bool const
+  BinOp ==
+    Var a
+    Const 10
+```
+
+represents:
+
+```text
+bool d{a == 10}
+```
+
+This part:
+
+```text
+Assign y
+  BinOp +
+    BinOp *
+      Var y
+      Var z
+    Var a
+```
+
+represents:
+
+```text
+y := y * z + a
+```
+
+It proves multiplication binds more strongly:
+
+```text
+(y * z) + a
+```
+
+---
+
+# 6. Visitor architecture
+
+Every AST node has an `accept()` method.
+
+Conceptually:
+
+```python
+node.accept(visitor)
+```
+
+determines the node’s class and calls the corresponding visitor method:
+
+```text
+DeclNode   → visit_decl
+AssignNode → visit_assign
+BinOpNode  → visit_binop
+VarNode    → visit_var
+```
+
+The same tree is processed by three independent visitors:
+
+```text
+AstPrinter
+SemanticChecker
+CodeGenerator
+```
+
+That means AST nodes do not need to contain parsing, checking, and LLVM logic all mixed together.
+
+---
+
+# 7. Semantic checker
+
+The `SemanticChecker` runs after parsing and before LLVM generation:
+
+```text
+AST → SemanticChecker → checked AST
+```
+
+This is the central Practice 4 requirement.
+
+It owns the symbol table:
+
+```python
+self.symbols = {}
+```
+
+Conceptually, entries look like:
+
+```text
+a → declaration of a, type i64, const
+e → declaration of e, type bool, mut
+y → declaration of y, type i64, mut
+```
+
+## Declaration checking
+
+For:
+
+```text
+i64 y{x}
+```
+
+the checker performs these steps:
+
+1. Ensure `y` is not already declared.
+2. Check the initializer before adding `y` to the table.
+3. Determine the initializer type.
+4. Check whether that type can go into `i64`.
+5. Add `y` to the symbol table.
+
+Checking the initializer first correctly rejects:
+
+```text
+i32 x{x}
+```
+
+because `x` does not exist while its own initializer is checked.
+
+## Variable resolution
+
+When the checker sees:
+
+```text
+Var x
+```
+
+it finds `x` in the symbol table.
+
+It then saves the resolved declaration:
+
+```python
+node.decl = declaration_of_x
+```
+
+It also saves the type:
+
+```python
+node.type = declaration_of_x.type_name
+```
+
+Therefore, code generation does not need to perform another semantic lookup.
+
+## Assignment checking
+
+For:
+
+```text
+y := x
+```
+
+the checker verifies:
+
+1. `y` was declared.
+2. `y` is `mut`.
+3. The right-hand expression is valid.
+4. The right-hand type can be assigned to `y`.
+
+---
+
+# 8. Type system
+
+The language has:
+
+```text
+i32
+i64
+bool
+```
+
+## Constants
+
+A decimal constant receives the narrowest integer type that can hold it:
+
+```text
+10          → i32
+3000000000  → i64
+```
+
+A value larger than signed `i64` is rejected:
+
+```text
+99999999999999999999
+```
+
+## Widening
+
+The only automatic conversion is:
+
+```text
+i32 → i64
+```
+
+These are valid:
+
+```text
+i32 x{10}
+i64 y{x}
+```
+
+These are invalid:
+
+```text
+i64 x{3000000000}
+i32 y{x}
+```
+
+The second example attempts to narrow `i64` into `i32`.
+
+## Arithmetic
+
+The operators are:
+
+```text
++
+-
+*
+```
+
+Both operands must be integers.
+
+Result rules:
+
+```text
+i32 + i32 → i32
+i32 + i64 → i64
+i64 + i32 → i64
+i64 + i64 → i64
+```
+
+This is rejected:
+
+```text
+bool b{true}
+i32 x{1 + b}
+```
+
+because arithmetic cannot use `bool`.
+
+## Comparisons
+
+Supported comparisons:
+
+```text
+==
+!=
+```
+
+Valid combinations:
+
+```text
+i32  compared with i32
+i32  compared with i64
+i64  compared with i32
+i64  compared with i64
+bool compared with bool
+```
+
+The result is always:
+
+```text
+bool
+```
+
+This is invalid:
+
+```text
+bool b{true}
+bool result{b == 1}
+```
+
+because `bool` cannot be compared with an integer.
+
+---
+
+# 9. Code generation
+
+The `CodeGenerator` runs only after the complete tree passes semantic checking.
+
+Therefore, it can trust that:
+
+- all variables exist;
+- declarations are unique;
+- assignments target mutable variables;
+- all expressions have valid types;
+- all conversions are allowed.
+
+## LLVM types
+
+The language types map to LLVM like this:
+
+```text
+i32  → LLVM i32
+i64  → LLVM i64
+bool → LLVM i1
+```
+
+## Variables
+
+A declaration creates an LLVM stack allocation:
+
+```text
+i32 x{10}
+```
+
+produces an `alloca i32`, followed by a `store`.
+
+An `i64` variable uses:
+
+```text
+alloca i64
+```
+
+A boolean variable uses:
+
+```text
+alloca i1
+```
+
+## Widening with `sext`
+
+Your command:
+
+```bash
+grep sext output.ll
+```
+
+produced:
+
+```text
+%"wide" = sext i32 %"x.value" to i64
+```
+
+This proves the compiler converted an `i32` value to `i64`.
+
+`sext` means **sign extension**. It creates a 64-bit integer with the same signed value as the original 32-bit integer.
+
+For:
+
+```text
+i32 x{15}
+i64 y{x}
+```
+
+the compiler:
+
+1. loads the `i32` value of `x`;
+2. extends it to `i64`;
+3. stores the resulting `i64` value in `y`.
+
+## Arithmetic generation
+
+The generator uses LLVM builder methods:
+
+```python
+builder.add(...)
+builder.sub(...)
+builder.mul(...)
+```
+
+It first widens operands when needed so both LLVM operands have the same width.
+
+LLVM cannot directly perform:
+
+```text
+add i32 value, i64 value
+```
+
+Both operands must have the same LLVM type.
+
+## Comparison generation
+
+Comparisons use:
+
+```python
+builder.icmp_signed(...)
+```
+
+They produce LLVM `i1`, which is the representation of `bool`.
+
+Before comparing an `i32` with an `i64`, the generator first widens the `i32`.
+
+## Boolean output
+
+Integer exits use:
+
+```text
+Program exit with result %lld
+```
+
+Before printing, an `i32` is widened to `i64`.
+
+Boolean exits use:
+
+```text
+Program exit with result %s
+```
+
+LLVM `select` chooses between pointers to:
+
+```text
+true
+false
+```
+
+This does not require branches.
+
+Your command demonstrated:
+
+```text
+Program exit with result true
+```
+
+---
+
+# 10. Why the main program produces 385
+
+Relevant declarations:
+
+```text
+i64 a{10}
+i32 x{15}
+i64 mut y{x}
+i64 z{x + 10}
+y := y * z + a
+exit y
+```
+
+Values:
+
+```text
+a = 10
+x = 15
+y = 15
+z = 15 + 10 = 25
+```
+
+Assignment:
+
+```text
+y = y * z + a
+y = 15 * 25 + 10
+y = 375 + 10
+y = 385
+```
+
+Therefore:
+
+```text
+Program exit with result 385
+```
+
+---
+
+# 11. Error phases
+
+There are now three distinct places where compilation can fail.
+
+## Lexer errors
+
+Examples:
+
+```text
+=
+!
+$
+/
+(
+```
+
+These characters or incomplete operators cannot form valid tokens.
+
+## Parser errors
+
+Examples:
+
+```text
+i32 x{}
+i32 x{1 +}
+x 10
+exit x + 1
+```
+
+The tokens exist, but they do not follow the grammar.
+
+## Semantic errors
+
+Examples:
+
+```text
+i32 x{y}             # y is not declared
+i32 x{1}
+x := 2               # x is not mut
+bool b{1}            # incorrect type
+i32 x{3000000000}    # does not fit
+```
+
+The syntax is valid, but its meaning violates language rules.
+
+Importantly, semantic errors occur before `CodeGenerator` is constructed.
+
+---
+
+# 12. Test suite
+
+Your test runner executed:
+
+```text
+8 valid tests
+10 invalid tests
+18 total
+```
+
+## Valid tests cover
+
+- boolean comparison;
+- boolean exit;
+- `i64` constants;
+- `i32 → i64` widening;
+- comparisons between different integer widths;
+- mixed-width arithmetic;
+- precedence and left associativity;
+- the complete Task 1 program producing `385`.
+
+## Invalid tests cover
+
+- boolean arithmetic;
+- assignment to a const variable;
+- constant overflow for `i32`;
+- constant overflow for `i64`;
+- integer assigned to `bool`;
+- comparison between `bool` and integer;
+- narrowing during assignment;
+- narrowing during initialization;
+- single `=`;
+- variable used before declaration.
+
+The result:
+
+```text
+Passed: 18
+Failed: 0
+```
+
+proves both successful compilation and correct rejection behavior.
+
+# Short explanation for the teacher
+
+You can summarize your design like this:
+
+> Practice 3’s missing parser and AST were added first. The hand-written recursive-descent parser builds an AST with precedence and left associativity. Practice 4 adds `i64`, `bool`, literals, and comparisons. A separate `SemanticChecker` resolves variables, assigns expression types, enforces mutability and type compatibility, and permits only `i32` to `i64` widening. The LLVM generator runs only after checking and uses `sext`, `icmp`, and `select`. All 18 tests pass.
+
+==============================================================================
+USER
+==============================================================================
+
+create txt file where u log this conversation
+
+==============================================================================
+ASSISTANT
+==============================================================================
+
+Created a structured text log of the complete Practice 4 conversation, including implementation, troubleshooting, test results, and explanations.
+
+<file source="session-file://ac3b4543-1479-4641-a13c-c8084697eb3b">practice4_conversation_log.txt</file>
+
+You can place it in your repository with:
+
+```bash
+cp ~/Downloads/practice4_conversation_log.txt .
+git add practice4_conversation_log.txt
+```
+
+Adjust the source path if your browser downloads it somewhere else.
+
+==============================================================================
+USER
+==============================================================================
+
+create another one where u just log our messages word for word
