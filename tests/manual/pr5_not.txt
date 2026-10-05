@@ -1,0 +1,5 @@
+bool flag{true}
+bool other{!flag}
+bool mut result{false}
+result := !other
+exit result
