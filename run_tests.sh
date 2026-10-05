@@ -11,7 +11,7 @@ echo "Running valid tests..."
 for source in tests/ok/*.txt; do
     expected="${source%.txt}.expected"
     rm -f "$ir_file" "$actual_file"
-    if python3 compiler.py "$source" "$ir_file" 2>"$actual_file"; then
+    if python3 src/compiler.py "$source" "$ir_file" 2>"$actual_file"; then
         if lli "$ir_file" >"$actual_file" && diff -u "$expected" "$actual_file"; then
             echo "PASS: $source"; passed=$((passed + 1))
         else
@@ -27,7 +27,7 @@ echo "Running invalid tests..."
 for source in tests/err/*.txt; do
     expected="${source%.txt}.expected"
     rm -f "$ir_file" "$actual_file"
-    if python3 compiler.py "$source" "$ir_file" 2>"$actual_file"; then
+    if python3 src/compiler.py "$source" "$ir_file" 2>"$actual_file"; then
         echo "FAIL: $source compiled successfully"; failed=$((failed + 1)); continue
     fi
     if test -e "$ir_file"; then

@@ -1,0 +1,6 @@
+i32 n{1}
+if n
+{
+ exit 1
+}
+exit 0

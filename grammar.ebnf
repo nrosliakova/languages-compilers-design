@@ -1,10 +1,22 @@
-program ::= { statement endline | endline } exit [ endline ]
-statement ::= declaration | assignment
+program ::= { statement } exit
+statement ::= ( declaration | assignment ) NL | if
 declaration ::= type [ "mut" ] ident "{" expression "}"
 type ::= "i32" | "i64" | "bool"
 assignment ::= ident ":=" expression
-exit ::= "exit" factor
+exit ::= "exit" factor [ NL ]
+
+if ::= "if" expression NL block [ "else" NL block ]
+block ::= "{" NL { statement } [ exit ] "}" NL
+
 expression ::= arithmetic [ ( "==" | "!=" ) arithmetic ]
 arithmetic ::= term { ( "+" | "-" ) term }
 term ::= factor { "*" factor }
-factor ::= number | "true" | "false" | ident
+factor ::= number | "true" | "false" | ident | "!" factor
+
+# NL means the end of a source line.
+# Blank lines are ignored.
+# The final source line may end at EOF without a newline.
+# A block must contain at least one statement or an exit.
+# No statement may follow exit within the same block or program.
+# "{", "}", and "else" must stand alone on their lines.
+# Parentheses and unary minus are not supported.
