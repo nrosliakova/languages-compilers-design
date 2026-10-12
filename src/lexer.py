@@ -99,6 +99,8 @@ def lex(data):
                 start_column = column
             elif byte == ord(","):
                 tokens.append(Token("operator", ",", line, column))
+            elif byte == ord("."):
+                tokens.append(Token("operator", ".", line, column))
             elif byte == ord("("):
                 tokens.append(Token("operator", "(", line, column))
             elif byte == ord(")"):

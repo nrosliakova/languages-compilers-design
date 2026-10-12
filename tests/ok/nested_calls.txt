@@ -1,0 +1,12 @@
+fn add := (i32 a, i32 b) -> i32
+{
+    i32 sum{a + b}
+    exit sum
+}
+fn twice := (i32 v) -> i32
+{
+    i32 r{add(v, v)}
+    exit r
+}
+i32 result{twice(add(3, 4))}
+exit result
