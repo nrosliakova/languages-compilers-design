@@ -56,11 +56,37 @@ class IfNode(Node):
 
 
 @dataclass
+class FieldNode(Node):
+    name: str
+    type_name: str
+    mutable: bool
+
+
+@dataclass
+class StructNode(Node):
+    name: str
+    fields: list
+
+@dataclass
+class ParamNode(Node):
+    name: str
+    type_name: str
+
+
+@dataclass
+class FnNode(Node):
+    name: str
+    params: list
+    result_type: str
+    body: BlockNode
+
+@dataclass
 class DeclNode(Node):
     name: str
     type_name: str
     mutable: bool
     init: object
+    extra_inits: list = field(default_factory=list)
     pointer: object = field(default=None, init=False, repr=False)
 
 
@@ -108,6 +134,16 @@ class BoolNode(ExprNode):
 class NotNode(ExprNode):
     operand: object
 
+@dataclass
+class CallNode(ExprNode):
+    name: str
+    args: list
+    fn: object = field(default=None, init=False, repr=False)
+
+    def visit_call(self, node):
+        self.add(f"Call {node.name}")
+        for arg in node.args:
+            self.child(arg)
 
 class Parser:
     def __init__(self, lines):
@@ -218,6 +254,10 @@ class Parser:
 
             if self.at("exit"):
                 exit_node = self.parse_exit()
+            elif self.at("struct"):
+                statements.append(self.parse_struct())
+            elif self.at("fn"):
+                statements.append(self.parse_fn())
             else:
                 statements.append(self.parse_statement())
 
@@ -249,14 +289,34 @@ class Parser:
         if token.text == "if":
             return self.parse_if()
 
+        if token.text == "struct":
+            raise CompileError(
+                token.line,
+                token.column,
+                "a struct is declared only at the top level",
+            )
+
         if token.text == "else":
             raise CompileError(
                 token.line,
                 token.column,
                 "'else' without an 'if'",
             )
+        if token.text == "fn":
+            raise CompileError(
+                token.line,
+                token.column,
+                "a function is declared only at the top level",
+            )
 
         if token.kind == "identifier":
+            following = (
+                self.tokens[self.pos + 1]
+                if self.pos + 1 < len(self.tokens)
+                else None
+            )
+            if following is not None and following.kind == "identifier":
+                return self.parse_decl()
             return self.parse_assign()
 
         raise CompileError(
@@ -372,6 +432,10 @@ class Parser:
             )
         self.eat()
         init = self.parse_expr()
+        extra_inits = []
+        while self.at(","):
+            self.eat()
+            extra_inits.append(self.parse_expr())
         self.expect_text("}", "expected '}' after the initialiser")
         return DeclNode(
             name.line,
@@ -380,6 +444,154 @@ class Parser:
             type_token.text,
             mutable,
             init,
+            extra_inits,
+        )
+
+    def parse_struct(self):
+        struct_token = self.eat()
+        name = self.expect_kind("identifier", "expected a struct name")
+        self.expect_line_end()
+
+        if not self.next_line():
+            raise CompileError(
+                struct_token.line,
+                struct_token.column,
+                "expected '{' on its own line after 'struct', "
+                "found end of input",
+            )
+
+        self.expect_text(
+            "{",
+            "expected '{' on its own line after 'struct'",
+        )
+        opening = self.tokens[self.pos - 1]
+        fields = []
+
+        while self.next_line():
+            if self.at("}"):
+                self.eat()
+                self.expect_line_end()
+
+                if not fields:
+                    raise CompileError(
+                        opening.line,
+                        opening.column,
+                        f"struct '{name.text}' has no fields",
+                    )
+
+                return StructNode(
+                    line=struct_token.line,
+                    column=struct_token.column,
+                    name=name.text,
+                    fields=fields,
+                )
+
+            type_token = self.eat()
+            if (
+                type_token.kind != "identifier"
+                and type_token.text not in {"i32", "i64", "bool"}
+            ):
+                self.error_here("expected a field type")
+
+            mutable = False
+            if self.at("mut"):
+                self.eat()
+                mutable = True
+
+            field_name = self.expect_kind(
+                "identifier",
+                "expected a field name",
+            )
+            self.expect_line_end()
+            fields.append(
+                FieldNode(
+                    field_name.line,
+                    field_name.column,
+                    field_name.text,
+                    type_token.text,
+                    mutable,
+                )
+            )
+
+        raise CompileError(
+            opening.line,
+            opening.column,
+            "'{' is never closed",
+        )
+
+    def parse_fn(self):
+        fn_token = self.eat()
+        name = self.expect_kind("identifier", "expected a function name")
+        self.expect_text(":=", "expected ':=' after the function name")
+        self.expect_text("(", "expected '(' after ':='")
+
+        params = []
+        if not self.at(")"):
+            while True:
+                type_token = self.eat()
+                if (
+                    type_token.kind != "identifier"
+                    and type_token.text not in {"i32", "i64", "bool"}
+                ):
+                    self.error_here("expected a parameter type")
+
+                param_name = self.expect_kind(
+                    "identifier",
+                    "expected a parameter name",
+                )
+                params.append(
+                    ParamNode(
+                        param_name.line,
+                        param_name.column,
+                        param_name.text,
+                        type_token.text,
+                    )
+                )
+
+                if self.at(","):
+                    self.eat()
+                    continue
+                break
+
+        self.expect_text(")", "expected ')' after the parameters")
+        self.expect_text("->", "expected '->' after the parameters")
+
+        result_token = self.eat()
+        if (
+            result_token.kind != "identifier"
+            and result_token.text not in {"i32", "i64", "bool"}
+        ):
+            self.error_here("expected a result type")
+        self.expect_line_end()
+
+        if not self.next_line():
+            raise CompileError(
+                fn_token.line,
+                fn_token.column,
+                "expected '{' on its own line after the function signature, "
+                "found end of input",
+            )
+
+        self.expect_text(
+            "{",
+            "expected '{' on its own line after the function signature",
+        )
+        body = self.parse_block()
+
+        if body.exit_node is None:
+            raise CompileError(
+                body.line,
+                body.column,
+                f"function '{name.text}' has no exit",
+            )
+
+        return FnNode(
+            line=fn_token.line,
+            column=fn_token.column,
+            name=name.text,
+            params=params,
+            result_type=result_token.text,
+            body=body,
         )
 
     def parse_assign(self):
@@ -454,6 +666,9 @@ class Parser:
             return ConstNode(token.line, token.column, int(token.text))
         if token.kind == "identifier":
             self.eat()
+            following = self.peek()
+            if following is not None and following.text == "(":
+                return self.parse_call(token)
             return VarNode(token.line, token.column, token.text)
         if token.text in {"true", "false"}:
             self.eat()
@@ -463,7 +678,6 @@ class Parser:
             token.column,
             f"expected a number, boolean or variable, got '{token.text}'",
         )
-
 
 class AstPrinter:
     def __init__(self):
@@ -503,6 +717,26 @@ class AstPrinter:
         mutability = "mut" if node.mutable else "const"
         self.add(f"Decl {node.name} {node.type_name} {mutability}")
         self.child(node.init)
+        for extra in node.extra_inits:
+            self.child(extra)
+
+    def visit_struct(self, node):
+        self.add(f"Struct {node.name}")
+        for struct_field in node.fields:
+            self.child(struct_field)
+
+    def visit_field(self, node):
+        mutability = "mut" if node.mutable else "const"
+        self.add(f"Field {node.name} {node.type_name} {mutability}")
+
+    def visit_fn(self, node):
+        self.add(f"Fn {node.name} -> {node.result_type}")
+        for param in node.params:
+            self.child(param)
+        self.child(node.body)
+
+    def visit_param(self, node):
+        self.add(f"Param {node.name} {node.type_name}")
 
     def visit_assign(self, node):
         self.add(f"Assign {node.name}")
@@ -534,6 +768,7 @@ class AstPrinter:
 class SemanticChecker:
     def __init__(self):
         self.scopes = [{}]
+        self.structs = {}
 
     def lookup(self, node, name):
         for frame in reversed(self.scopes):
@@ -576,15 +811,97 @@ class SemanticChecker:
                 f"variable '{node.name}' is already declared in this block",
             )
 
+        if (
+            node.type_name not in {"i32", "i64", "bool"}
+            and node.type_name not in self.structs
+        ):
+            raise CompileError(
+                node.line,
+                node.column,
+                f"unknown type '{node.type_name}'",
+            )
+
         node.init.accept(self)
-        self.check_assignable(
-            node.init,
-            node.type_name,
-            node,
-            f"initialise '{node.name}'",
-        )
+        for extra in node.extra_inits:
+            extra.accept(self)
+
+        if node.type_name in self.structs:
+            self.check_struct_init(node, self.structs[node.type_name])
+        else:
+            if node.extra_inits:
+                raise CompileError(
+                    node.extra_inits[0].line,
+                    node.extra_inits[0].column,
+                    f"'{node.type_name}' takes a single value in {{}}",
+                )
+            self.check_assignable(
+                node.init,
+                node.type_name,
+                node,
+                f"initialise '{node.name}'",
+            )
 
         current_scope[node.name] = node
+
+    def visit_struct(self, node):
+        if node.name in self.structs:
+            raise CompileError(
+                node.line,
+                node.column,
+                f"struct '{node.name}' is already declared",
+            )
+
+        field_names = set()
+        for struct_field in node.fields:
+            if (
+                struct_field.type_name not in {"i32", "i64", "bool"}
+                and struct_field.type_name not in self.structs
+            ):
+                raise CompileError(
+                    struct_field.line,
+                    struct_field.column,
+                    f"unknown type '{struct_field.type_name}' "
+                    f"of field '{struct_field.name}'",
+                )
+            if struct_field.name in field_names:
+                raise CompileError(
+                    struct_field.line,
+                    struct_field.column,
+                    f"field '{struct_field.name}' is already declared "
+                    f"in struct '{node.name}'",
+                )
+            field_names.add(struct_field.name)
+
+        self.structs[node.name] = node
+
+    def check_struct_init(self, node, struct_node):
+        values = [node.init] + node.extra_inits
+        fields = struct_node.fields
+
+        if (
+            len(values) == 1
+            and isinstance(values[0], VarNode)
+            and values[0].type == node.type_name
+        ):
+            return
+
+        if len(values) != len(fields):
+            raise CompileError(
+                node.line,
+                node.column,
+                f"struct '{node.type_name}' needs {len(fields)} values "
+                f"in {{}}, got {len(values)}",
+            )
+
+        for struct_field, value in zip(fields, values):
+            self.check_assignable(
+                value,
+                struct_field.type_name,
+                value,
+                f"initialise '{struct_field.name}' of '{node.name}'",
+            )
+
+        return None
 
     def visit_assign(self, node):
         decl = self.lookup(node, node.name)
@@ -713,6 +1030,8 @@ class SemanticChecker:
 class CodeGenerator:
     def __init__(self):
         self.module = ir.Module(name="practice4")
+        self.struct_types = {}
+        self.structs = {}
         self.module.triple = llvm.get_default_triple()
         self.main = ir.Function(
             self.module,
@@ -748,6 +1067,8 @@ class CodeGenerator:
         return self.builder.bitcast(global_value, I8.as_pointer())
 
     def llvm_type(self, type_name):
+        if type_name in self.struct_types:
+            return self.struct_types[type_name]
         return {"i32": I32, "i64": I64, "bool": I1}[type_name]
 
     def coerce(self, value, have, want):
@@ -763,6 +1084,14 @@ class CodeGenerator:
         for statement in node.statements:
             statement.accept(self)
         node.exit_node.accept(self)
+
+    def visit_struct(self, node):
+        self.structs[node.name] = node
+        struct_type = self.module.context.get_identified_type(node.name)
+        self.struct_types[node.name] = struct_type
+        struct_type.set_body(
+            *[self.llvm_type(struct_field.type_name) for struct_field in node.fields]
+        )
 
     def visit_not(self, node):
         value = node.operand.accept(self)
@@ -784,6 +1113,48 @@ class CodeGenerator:
         return pointer
 
     def visit_decl(self, node):
+        if node.type_name in self.structs:
+            values = [node.init] + node.extra_inits
+            struct_node = self.structs[node.type_name]
+
+            if (
+                len(values) == 1
+                and isinstance(values[0], VarNode)
+                and values[0].type == node.type_name
+            ):
+                value = self.builder.load(
+                    values[0].decl.pointer,
+                    name=f"{values[0].name}.value",
+                )
+            else:
+                value = None
+
+            node.pointer = self.create_entry_alloca(
+                node.type_name,
+                node.name,
+            )
+
+            if value is not None:
+                self.builder.store(value, node.pointer)
+                return
+
+            for index, (struct_field, value_node) in enumerate(
+                zip(struct_node.fields, values)
+            ):
+                field_value = value_node.accept(self)
+                field_value = self.coerce(
+                    field_value,
+                    value_node.type,
+                    struct_field.type_name,
+                )
+                slot = self.builder.gep(
+                    node.pointer,
+                    [ir.Constant(I32, 0), ir.Constant(I32, index)],
+                    name=f"{node.name}.{struct_field.name}.ptr",
+                )
+                self.builder.store(field_value, slot)
+            return
+
         value = node.init.accept(self)
         value = self.coerce(value, node.init.type, node.type_name)
 

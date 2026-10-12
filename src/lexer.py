@@ -11,6 +11,8 @@ KEYWORDS = {
     "false",
     "if",
     "else",
+    "struct",
+    "fn",
 }
 
 
@@ -89,8 +91,18 @@ def lex(data):
                 tokens.append(Token("block", "{", line, column))
             elif byte == ord("}"):
                 tokens.append(Token("block", "}", line, column))
-            elif byte in (ord("+"), ord("-"), ord("*")):
+            elif byte in (ord("+"), ord("*")):
                 tokens.append(Token("operator", chr(byte), line, column))
+            elif byte == ord("-"):
+                state = "DASH"
+                start_line = line
+                start_column = column
+            elif byte == ord(","):
+                tokens.append(Token("operator", ",", line, column))
+            elif byte == ord("("):
+                tokens.append(Token("operator", "(", line, column))
+            elif byte == ord(")"):
+                tokens.append(Token("operator", ")", line, column))
             elif byte == ord(":"):
                 state = "COLON"
                 start_line = line
@@ -170,6 +182,19 @@ def lex(data):
             else:
                 tokens.append(
                     Token("operator", "!", start_line, start_column)
+                )
+                state = "START"
+                continue
+
+        elif state == "DASH":
+            if byte == ord(">"):
+                tokens.append(
+                    Token("operator", "->", start_line, start_column)
+                )
+                state = "START"
+            else:
+                tokens.append(
+                    Token("operator", "-", start_line, start_column)
                 )
                 state = "START"
                 continue

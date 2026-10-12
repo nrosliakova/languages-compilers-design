@@ -8,3 +8,5 @@ test
 .venv/
 core
 core.*
+file_contents.txt
+*.patch
