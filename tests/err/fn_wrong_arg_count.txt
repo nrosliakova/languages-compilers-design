@@ -1,0 +1,6 @@
+fn fib := (i32 n) -> i32
+{
+    exit n
+}
+i32 a{fib(1, 2)}
+exit a

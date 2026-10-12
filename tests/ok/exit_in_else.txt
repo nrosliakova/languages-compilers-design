@@ -1,0 +1,10 @@
+bool flag{true}
+if !flag
+{
+ exit 1
+}
+else
+{
+ exit 2
+}
+exit 0

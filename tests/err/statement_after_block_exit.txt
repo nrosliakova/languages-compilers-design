@@ -1,0 +1,6 @@
+if true
+{
+ exit 1
+ i32 x{2}
+}
+exit 0

@@ -1,0 +1,14 @@
+Program
+  Decl flag bool const
+    Bool true
+  If
+    Not
+      Var flag
+    Block
+      Exit
+        Const 1
+    Block
+      Exit
+        Const 2
+  Exit
+    Const 0
