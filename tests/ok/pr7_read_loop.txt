@@ -1,0 +1,7 @@
+i32 mut n{0}
+while n != 3
+{
+    n := read()
+    print(n)
+}
+exit n

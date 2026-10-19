@@ -1,0 +1,1 @@
+compilation error: line 5:12: cannot pass to 'n' of 'fib' of type i32 with a value of type bool

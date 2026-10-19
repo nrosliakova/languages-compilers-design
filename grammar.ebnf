@@ -1,0 +1,36 @@
+program ::= { struct } { fn } { statement } exit
+struct ::= "struct" ident NL "{" NL field_decl { field_decl } { fn } "}" NL
+field_decl ::= type [ "mut" ] ident NL
+fn ::= "fn" ident ":=" "(" [ param { "," param } ] ")" "->" type NL block
+param ::= type ident
+type ::= "i32" | "i64" | "bool" | ident
+statement ::= ( declaration | assignment | print ) NL | if | while
+declaration ::= type [ "mut" ] ident "{" init_value { "," init_value } "}"
+init_value ::= expression | "{" init_value { "," init_value } "}"
+assignment ::= ident { "." ident } ":=" expression
+exit ::= "exit" factor [ NL ]
+if ::= "if" expression NL block [ "else" NL block ]
+while ::= "while" expression NL block
+block ::= "{" NL { statement } [ exit ] "}" NL
+print ::= "print" "(" ( string | expression ) ")"
+string ::= '"' { any byte except '"' and newline } '"'
+expression ::= arithmetic [ ( "==" | "!=" ) arithmetic ]
+arithmetic ::= term { ( "+" | "-" ) term }
+term ::= factor { "*" factor }
+factor ::= number | "true" | "false" | "!" factor | "read" "(" ")"
+         | ident [ arguments ] { "." ident [ arguments ] }
+arguments ::= "(" [ expression { "," expression } ] ")"
+
+# NL means the end of a source line.
+# Blank lines are ignored.
+# The final source line may end at EOF without a newline.
+# A block must contain at least one statement or an exit.
+# No statement may follow exit within the same block or program.
+# "{", "}", and "else" must stand alone on their lines.
+# Parentheses and unary minus are not supported.
+# Parentheses above delimit function calls, not grouped arithmetic.
+# A member function follows at least one field; fields cannot follow methods.
+# read and print are reserved. A string is allowed only as print's direct argument.
+# String literals do not interpret escape sequences.
+# A dot after a call requires a struct result (the optional Practice 7 extension).
+# Call results are temporary copies and cannot be assigned to.

@@ -1,0 +1,3889 @@
+PRACTICE 7 — AI USAGE AND CONVERSATION LOG
+
+EXPORT NOTES (not part of the conversation)
+This file contains a usage record followed by the saved user/assistant message text,
+from the first task request through the user's request to generate this file.
+Message bodies are copied without paraphrasing or correcting earlier mistakes.
+Original Markdown, HTML tags such as <br />, code, spelling, and escaping are retained.
+Speaker labels and separators have been added outside the message bodies.
+User-selected text and its comment are included as saved selection context.
+File attachment metadata is retained as returned by the message export; ZIP contents
+are not embedded. The text attachment is included verbatim in a separate appendix.
+Hidden instructions, automatic workspace context, internal reasoning, and tool calls
+or tool-result logs are not included. This export's progress/final messages are outside
+the transcript cutoff. The transcript does not claim to log other sessions.
+
+================================================================================
+PART 1 — USAGE RECORD (not a verbatim transcript)
+================================================================================
+
+Practice 7 — AI usage
+
+Tools used:
+- Notion AI in this chat, first for step-by-step guidance and then for direct code edits.
+- The assignment supplied through the Notion page was read as the specification.
+- Python scripts were used to inspect the uploaded project and apply targeted edits.
+- llvmlite.ir generated LLVM; llvmlite.binding parsed and verified the generated modules.
+- LLVM lli ran the compiled programs. Both project test runners were executed.
+- llvmlite and LLVM were installed in the assistant's temporary environment for verification.
+
+Prompts / requests:
+- "read task, i also attached state of files now, help me with understan\ing and doing the task"
+- Repeated requests to continue the implementation and reports of parser/type-checking results.
+- "can u complete other tasks" together with the updated project1.zip.
+
+AI-generated material used in this project:
+- Earlier guided changes: member AST nodes, parsing, per-struct method registration,
+  name lookup, direct and transitive mutation analysis, const-chain checks, and LLVM methods.
+- This completion: read(), string lexing, print statements for all required types,
+  while support, .in support in both test runners, temporary-result chains, and diagnostics.
+- New Practice 7 tests, expected outputs, input files, updated grammar and documentation.
+
+What was changed rather than replacing the project wholesale:
+- The uploaded lexer/parser/visitor/code-generator structure and existing tests were kept.
+- Existing expression and declaration checks were reused for method calls and built-ins.
+- Struct copying was extended to member-call and field-access results.
+- Invalid primitive field chains now produce a compiler diagnostic instead of a traceback.
+- A separate LLVM type context prevents repeated in-process compilations from sharing types.
+
+Verification performed by the AI assistant:
+- check.py: 136 passed, 0 failed.
+- run_tests.sh: 136 passed, 0 failed.
+- All 48 valid-test modules were parsed and verified through llvmlite.binding.
+- Every alloca in every generated function was checked for entry-first placement.
+- The required member example returned 83; the optional chain example returned 46.
+- Error fixtures were checked for a matching diagnostic category, line:column,
+  nonzero compiler exit, and removal of a stale output file before saving them.
+
+Review status:
+The completion code, tests, and documents in this delivery are AI-authored.
+The assistant's test results describe its own environment. The user subsequently
+reported local runs of check.py and run_tests.sh, both with 136 passed, 0 failed.
+No git push or pull request was performed. Any later human edits and local verification
+should be added to this file before submission.
+
+================================================================================
+PART 2 — VERBATIM SAVED MESSAGE TEXT
+================================================================================
+
+
+================================================================================
+USER [message 23]
+================================================================================
+
+read task, i also attached state of files now, help me with understan\\ing and doing the task file project1.zip (application/x-zip-compressed, 65078497 bytes, file_id 843b8086-e94f-4c81-9bbc-161e3c43b932)
+
+================================================================================
+ASSISTANT [message 26]
+================================================================================
+
+I’ve read the task. I’ll inspect your current code, see what already works, and help you implement the missing parts step by step.
+
+================================================================================
+ASSISTANT [message 56]
+================================================================================
+
+I’ve read the assignment and inspected your files. **You already have the foundation from Practice 6—we need to extend it, not rewrite the compiler.**
+
+Let’s do this in small steps so you understand each change.
+
+## 1. What your code already has
+
+Your implementation is mainly in:
+
+- `src/lexer.py` — converts source text into tokens.
+- `src/compiler.py` — contains the AST, parser, semantic checker, and LLVM generator.
+- `check.py` — compiles and runs your tests.
+
+You already support structs, nested fields, global functions, parameters, and struct return values.
+
+**What is missing for Practice 7:**
+
+| Part | What we need to add |
+|---|---|
+| Parser and AST | Functions inside structs; calls such as `p.shift(2)` |
+| Semantic checker | Field lookup inside methods; member-function lookup; mutation checks |
+| LLVM generator | Pass the object’s address as a hidden first argument |
+| Input/output | `read()`, `print(...)`, and string literals |
+| Tests | New valid/invalid cases; pass `.in` files to programs |
+
+Two important details from your files:
+
+- **`ai_usage.txt` is currently empty.** The assignment says an empty/stub file means zero for the practice, so we must fill it honestly before submission.
+- `check.py` currently does **not** pass `.in` files as standard input.
+
+I haven’t changed your files yet. I also cannot run your compiler in this environment as-is: `llvmlite` and `lli` are not currently available here.
+
+## 2. What this practice means, simply
+
+### A member function is a function belonging to an object
+
+You already support something like:
+
+```txt
+fn square := (i32 x) -> i32
+{
+    exit x * x
+}
+```
+
+Now a function can live inside a struct:
+
+```txt
+struct Point
+{
+    i32 mut x
+    i32 mut y
+
+    fn d2 := () -> i32
+    {
+        exit x * x + y * y
+    }
+}
+```
+
+Then:
+
+```txt
+Point p{3, 4}
+i32 result{p.d2()}
+exit result
+```
+
+Here, `x` means **this particular point’s `x`**, and `y` means **this point’s `y`**.
+
+### The hidden argument is the main idea
+
+Although the user writes:
+
+```txt
+p.shift(2)
+```
+
+the generated LLVM function behaves conceptually like:
+
+```txt
+Point_shift(address_of_p, 2)
+```
+
+That address is essential. It lets `shift` change the original point rather than a copy. The assignment calls this hidden object argument `this`, but your language does not expose that name to users.[^https://app.notion.com/p/3fb73e86a4208059a474c2c542460c17]
+
+### Mutation is checked separately
+
+A method is mutating when it changes its object’s fields, directly or through another mutating method.
+
+```txt
+Point p{3, 4}
+i32 a{p.d2()}
+```
+
+Allowed: `d2()` only reads.
+
+```txt
+Point p{3, 4}
+i32 b{p.shift(1)}
+```
+
+Rejected: `p` is not `mut`.
+
+For `c.center.shift(1)`, **both `c` and `center` must be `mut`**.[^https://app.notion.com/p/3fb73e86a4208059a474c2c542460c17]
+
+## 3. Our implementation order
+
+We’ll use the assignment’s **“keep the new nodes”** approach. This fits your existing visitor-based compiler.
+
+1. Add AST storage for methods and member calls.
+2. Parse methods inside structs.
+3. Parse `p.d2()` and `c.center.d2()`.
+4. Show them correctly with `--ast`.
+5. Resolve names and check types.
+6. Detect mutating methods, including indirect calls.
+7. Generate LLVM with the hidden object pointer.
+8. Add `read`, strings, and `print`.
+9. Add tests and update the test runner.
+
+**Leave the optional call-in-the-middle extension until the required parts work.**
+
+## 4. First small change: extend the AST
+
+Open **`src/compiler.py`**.
+
+### A. Let a struct store its methods
+
+Your current class is:
+
+```python
+@dataclass
+class StructNode(Node):
+    name: str
+    fields: list
+```
+
+Change it to:
+
+```python
+@dataclass
+class StructNode(Node):
+    name: str
+    fields: list
+    methods: list = field(default_factory=list)
+```
+
+**Why:** a struct now contains two lists:
+
+```txt
+Point
+├── fields: x, y
+└── methods: d2, shift
+```
+
+The default empty list keeps existing struct creation working.
+
+### B. Add a node for member calls
+
+After your existing `CallNode`, add:
+
+```python
+@dataclass
+class MemberCallNode(ExprNode):
+    receiver: object
+    name: str
+    args: list
+    fn: object = field(default=None, init=False, repr=False)
+```
+
+For:
+
+```txt
+c.center.d2()
+```
+
+this node will hold:
+
+```txt
+receiver = FieldAccessNode for c.center
+name     = "d2"
+args     = []
+```
+
+`fn` starts empty. Later, the semantic checker fills it with the method declaration this call refers to—just as it already does for your global `CallNode`.
+
+**These two edits only prepare the AST. They do not make member functions work yet.** Next, we’ll update your existing `parse_struct()` to collect methods while preserving its current field parsing.
+
+Quick check: **why must `shift` receive the address of `p`, rather than a copy of `p`?**
+
+================================================================================
+USER [message 60]
+================================================================================
+
+next
+
+================================================================================
+ASSISTANT [message 70]
+================================================================================
+
+## Step 2 — parse functions inside a struct
+
+We’ll reuse your existing `parse_fn()`. It already knows how to read a function’s parameters, return type, and body.
+
+**Only edit `src/compiler.py`.** This step assumes you added `methods` to `StructNode` in the previous step.
+
+### 1. Add a list for methods
+
+Inside `parse_struct()`, find:
+
+```python
+        fields = []
+```
+
+Add one line:
+
+```python
+        fields = []
+        methods = []
+```
+
+### 2. Include methods in the returned struct
+
+Inside the same function, find:
+
+```python
+                return StructNode(
+                    line=struct_token.line,
+                    column=struct_token.column,
+                    name=name.text,
+                    fields=fields,
+                )
+```
+
+Change it to:
+
+```python
+                return StructNode(
+                    line=struct_token.line,
+                    column=struct_token.column,
+                    name=name.text,
+                    fields=fields,
+                    methods=methods,
+                )
+```
+
+### 3. Recognize `fn` before trying to parse a field
+
+Still inside `parse_struct()`, find:
+
+```python
+            type_token = self.eat()
+```
+
+**Immediately before it**, insert:
+
+```python
+            if self.at("fn"):
+                if not fields:
+                    token = self.peek()
+                    raise CompileError(
+                        token.line,
+                        token.column,
+                        "a member function must come after the first field",
+                    )
+
+                methods.append(self.parse_fn())
+                continue
+
+            if methods:
+                token = self.peek()
+                raise CompileError(
+                    token.line,
+                    token.column,
+                    "a field cannot be declared after a member function",
+                )
+```
+
+The loop now makes these decisions:
+
+```txt
+Current line starts with...
+
+}          → finish the struct
+fn         → parse a method, but require a field first
+other text → parse a field, but reject it if methods already started
+```
+
+**Why `continue`?** `parse_fn()` consumes the whole function, including its closing brace. `continue` returns to the struct loop, whose `next_line()` moves to the following method, field, or struct-closing brace.
+
+## Step 3 — display methods in `--ast`
+
+Find **`visit_struct()` inside `AstPrinter`**, not the versions in `SemanticChecker` or `CodeGenerator`.
+
+Replace that method with:
+
+```python
+    def visit_struct(self, node):
+        self.add(f"Struct {node.name}")
+        for struct_field in node.fields:
+            self.child(struct_field)
+        for method in node.methods:
+            self.add(f"MemberFn {method.name} -> {method.result_type}")
+            self.level += 1
+            for param in method.params:
+                self.child(param)
+            self.child(method.body)
+            self.level -= 1
+```
+
+**Check your indentation counter first:** use the same attribute that `AstPrinter.child()` increments and decrements. If it is named `indent` rather than `level`, use `self.indent` in the two lines above.
+
+We are reusing `FnNode` for method declarations; their position in `StructNode.methods` tells us they belong to a struct.
+
+## Test this small part
+
+Create `tests/ok/member_decl.txt`:
+
+```txt
+struct Point
+{
+    i32 mut x
+    i32 mut y
+
+    fn d2 := () -> i32
+    {
+        exit x * x + y * y
+    }
+}
+exit 0
+```
+
+Run:
+
+```bash
+python3 src/compiler.py --ast tests/ok/member_decl.txt
+```
+
+You should see this structure:
+
+```txt
+Program
+  Struct Point
+    Field x i32 mut
+    Field y i32 mut
+    MemberFn d2 -> i32
+      Block
+        Exit
+          ...
+  Exit
+    Const 0
+```
+
+Your existing printer may label the expression nodes differently; the important part is that **`MemberFn d2` appears inside `Struct Point`**.
+
+For now, use `--ast` only: semantic checking and LLVM generation do not handle these methods yet. Also, this temporary test needs a matching `.expected` file before running the full test suite.
+
+**Next: make the parser understand `p.d2()` and `c.center.d2()`.**
+
+================================================================================
+USER [message 73]
+================================================================================
+
+compilation error: line 8:16: unexpected '\*' after the statement
+
+================================================================================
+ASSISTANT [message 83]
+================================================================================
+
+That’s caused by **my test example**, not your new struct parsing—sorry.
+
+Your existing `parse_exit()` reads only **one factor**, so in:
+
+```txt
+exit x * x + y * y
+```
+
+it reads `x`, then reports the leftover `*` as unexpected.
+
+### 1. Fix the test without changing the language
+
+Use a variable for the calculation, as the assignment does:
+
+```txt
+struct Point
+{
+    i32 mut x
+    i32 mut y
+
+    fn d2 := () -> i32
+    {
+        i32 r{x * x + y * y}
+        exit r
+    }
+}
+exit 0
+```
+
+### 2. Correct my AST printer instructions too
+
+I checked your original file: the indentation attribute is **`self.depth`**, not `self.level`. Use this version inside `AstPrinter`:
+
+```python
+    def visit_struct(self, node):
+        self.add(f"Struct {node.name}")
+        for struct_field in node.fields:
+            self.child(struct_field)
+        for method in node.methods:
+            self.depth += 1
+            self.add(f"MemberFn {method.name} -> {method.result_type}")
+            for param in method.params:
+                self.child(param)
+            self.child(method.body)
+            self.depth -= 1
+```
+
+The extra indentation puts each method **inside its struct**, alongside the fields.
+
+Run again:
+
+```bash
+python3 src/compiler.py --ast tests/ok/member_decl.txt
+```
+
+This should now parse the calculation through the declaration and display `MemberFn d2` under `Struct Point`.
+
+================================================================================
+USER [message 86]
+================================================================================
+
+Program<br />Struct Point<br />Field x i32 mut<br />Field y i32 mut<br />MemberFn d2 -> i32<br />Block<br />Decl r i32 const<br />BinOp +<br />BinOp \*<br />Var x<br />Var x<br />BinOp \*<br />Var y<br />Var y<br />Exit<br />Var r<br />Exit<br />Const 0
+
+================================================================================
+ASSISTANT [message 89]
+================================================================================
+
+Yes—the expected nodes are there: **`Point` contains `d2`, and its body contains the calculation and `exit r`.** Chat may have removed the indentation.
+
+## Next — parse member calls
+
+We want both of these to work:
+
+```txt
+p.d2()
+c.center.d2()
+```
+
+The trick: after reading a name following `.`, check whether `(` comes next.
+
+- No `(` → it is a field.
+- Has `(` → it is a method call.
+
+### 1. Replace `Parser.parse_field_access()`
+
+In `src/compiler.py`, replace that method with:
+
+```python
+    def parse_field_access(self, name_token):
+        path = []
+        while self.at("."):
+            self.eat()
+            part = self.expect_kind(
+                "identifier",
+                "expected a field or member function name after '.'",
+            )
+
+            if self.at("("):
+                if path:
+                    receiver = FieldAccessNode(
+                        name_token.line,
+                        name_token.column,
+                        name_token.text,
+                        path,
+                    )
+                else:
+                    receiver = VarNode(
+                        name_token.line,
+                        name_token.column,
+                        name_token.text,
+                    )
+
+                call = self.parse_call(part)
+                return MemberCallNode(
+                    part.line,
+                    part.column,
+                    receiver,
+                    part.text,
+                    call.args,
+                )
+
+            path.append((part.text, part.line, part.column))
+
+        return FieldAccessNode(
+            name_token.line,
+            name_token.column,
+            name_token.text,
+            path,
+        )
+```
+
+**What happens for `c.center.d2()`?**
+
+```txt
+c         → base name
+.center   → add center to the field path
+.d2(      → recognize a method call
+
+Result:
+MemberCall d2
+  receiver: FieldAccess c.center
+  args: []
+```
+
+We reuse `parse_call()` to read the parentheses and arguments. There is no need to duplicate that logic.
+
+For now, the method call ends the chain. Supporting `p.moved(1).x` belongs to the optional task.
+
+### 2. Add the AST printer method
+
+Inside **`AstPrinter`**, add:
+
+```python
+    def visit_membercall(self, node):
+        self.add(f"MemberCall {node.name}")
+        self.child(node.receiver)
+        for arg in node.args:
+            self.child(arg)
+```
+
+The name must be **`visit_membercall`** because your visitor derives it from `MemberCallNode`.
+
+### 3. Extend the test
+
+Replace `tests/ok/member_decl.txt` with:
+
+```txt
+struct Point
+{
+    i32 mut x
+    i32 mut y
+
+    fn d2 := () -> i32
+    {
+        i32 r{x * x + y * y}
+        exit r
+    }
+}
+struct Circle
+{
+    Point center
+    i32 radius
+}
+Point p{3, 4}
+Circle c{p, 2}
+i32 a{p.d2()}
+i32 b{c.center.d2()}
+exit b
+```
+
+Run:
+
+```bash
+python3 src/compiler.py --ast tests/ok/member_decl.txt
+```
+
+Near the end, expect:
+
+```txt
+Decl a i32 const
+  MemberCall d2
+    Var p
+Decl b i32 const
+  MemberCall d2
+    Field c.center
+Exit
+  Var b
+```
+
+**Still use `--ast` only.** We are teaching the parser to recognize calls; next we’ll teach the semantic checker what those calls mean.
+
+================================================================================
+USER [message 92]
+================================================================================
+
+Program<br />Struct Point<br />Field x i32 mut<br />Field y i32 mut<br />MemberFn d2 -> i32<br />Block<br />Decl r i32 const<br />BinOp +<br />BinOp \*<br />Var x<br />Var x<br />BinOp \*<br />Var y<br />Var y<br />Exit<br />Var r<br />Struct Circle<br />Field center Point const<br />Field radius i32 const<br />Decl p Point const<br />Const 3<br />Const 4<br />Decl c Circle const<br />Var p<br />Const 2<br />Decl a i32 const<br />MemberCall d2<br />Var p<br />Decl b i32 const<br />MemberCall d2<br />FieldAccess c.center<br />Exit<br />Var b
+
+================================================================================
+ASSISTANT [message 102]
+================================================================================
+
+Correct—**both calls are parsed properly**:
+
+- `p.d2()` has receiver `Var p`.
+- `c.center.d2()` has receiver `FieldAccess c.center`.
+
+## Next — register member functions
+
+The parser now recognizes the syntax. The semantic checker must answer:
+
+> “Does this struct actually have a method with this name?”
+
+We’ll first give **each struct its own method dictionary**:
+
+```txt
+Point → d2
+Circle → no methods
+```
+
+This must stay separate from global functions: two different structs may both have a method named `d2`.
+
+### 1. Let `collect_fn()` use a chosen dictionary
+
+Inside **`SemanticChecker`**, find:
+
+```python
+    def collect_fn(self, node):
+        if node.name in self.fns:
+```
+
+Replace those two lines with:
+
+```python
+    def collect_fn(self, node, functions=None):
+        if functions is None:
+            functions = self.fns
+
+        if node.name in functions:
+```
+
+Then, **at the end of that same method**, change:
+
+```python
+        self.fns[node.name] = node
+```
+
+to:
+
+```python
+        functions[node.name] = node
+```
+
+Keep everything between those changes unchanged.
+
+**Why:** your existing method already checks parameter names, parameter types, and the return type. We reuse those checks for both global and member functions.
+
+```python
+self.collect_fn(fn)
+```
+
+Registers a global function.
+
+```python
+self.collect_fn(method, struct_node.method_map)
+```
+
+Registers a method belonging to one struct.
+
+### 2. Add a method-registration helper
+
+Inside **`SemanticChecker`**, add:
+
+```python
+    def collect_methods(self, struct_node):
+        struct_node.method_map = {}
+        field_names = {
+            struct_field.name
+            for struct_field in struct_node.fields
+        }
+
+        for method in struct_node.methods:
+            if method.name in field_names:
+                raise CompileError(
+                    method.line,
+                    method.column,
+                    f"member function '{method.name}' has the same name "
+                    f"as a field in struct '{struct_node.name}'",
+                )
+
+            self.collect_fn(method, struct_node.method_map)
+```
+
+This catches:
+
+```txt
+struct Point
+{
+    i32 x
+
+    fn x := () -> i32
+    {
+        exit 0
+    }
+}
+```
+
+A field and a method cannot share a name. Duplicate method names are caught by `collect_fn()`.
+
+### 3. Register methods before checking bodies
+
+Inside **`SemanticChecker.visit_program()`**, you currently have two loops.
+
+Insert this **between those loops**:
+
+```python
+        for statement in node.statements:
+            if isinstance(statement, StructNode):
+                self.collect_methods(statement)
+```
+
+The whole method should now be:
+
+```python
+    def visit_program(self, node):
+        for statement in node.statements:
+            if isinstance(statement, StructNode):
+                statement.accept(self)
+            elif isinstance(statement, FnNode):
+                self.collect_fn(statement)
+
+        for statement in node.statements:
+            if isinstance(statement, StructNode):
+                self.collect_methods(statement)
+
+        for statement in node.statements:
+            if isinstance(statement, StructNode):
+                continue
+            statement.accept(self)
+
+        node.exit_node.accept(self)
+```
+
+**Why register everything first?** A method can call another method declared later. Its signature must already be known before checking the call.
+
+### What this step accomplishes
+
+The checker now knows:
+
+```txt
+Point.method_map["d2"]
+    → the FnNode declaring d2
+```
+
+It also rejects duplicate method names and field/method name conflicts.
+
+**Normal compilation is not ready yet:** we still need to check method bodies and handle `MemberCallNode`. Your `--ast` output should remain unchanged.
+
+Next, we’ll make `x` and `y` inside `d2()` resolve to the point’s fields—while allowing parameters and local variables to hide those fields.
+
+================================================================================
+USER [message 105]
+================================================================================
+
+next
+
+================================================================================
+ASSISTANT [message 107]
+================================================================================
+
+## Next — let methods see their object’s fields
+
+Inside `d2()`, this:
+
+```txt
+i32 r{x * x + y * y}
+```
+
+must find `x` and `y` in the struct.
+
+The lookup order will be:
+
+```txt
+local variables → parameters → object fields
+```
+
+Top-level variables must stay invisible.
+
+### 1. Track which struct we are checking
+
+Inside **`SemanticChecker.__init__()`**, add:
+
+```python
+        self.current_struct = None
+```
+
+So it becomes:
+
+```python
+    def __init__(self):
+        self.scopes = [{}]
+        self.structs = {}
+        self.fns = {}
+        self.function = None
+        self.current_struct = None
+```
+
+### 2. Update how function bodies are checked
+
+Replace **`SemanticChecker.visit_fn()`** with:
+
+```python
+    def visit_fn(self, node, owner=None):
+        params_frame = {}
+        for param in node.params:
+            params_frame[param.name] = param
+
+        saved_scopes = self.scopes
+        saved_function = self.function
+        saved_struct = self.current_struct
+
+        if owner is None:
+            self.scopes = [params_frame]
+        else:
+            fields_frame = {
+                struct_field.name: struct_field
+                for struct_field in owner.fields
+            }
+            self.scopes = [fields_frame, params_frame]
+
+        self.function = node
+        self.current_struct = owner
+
+        try:
+            node.body.accept(self)
+        finally:
+            self.scopes = saved_scopes
+            self.function = saved_function
+            self.current_struct = saved_struct
+```
+
+**Why this works with your existing code:**
+
+Your `lookup()` searches scopes in reverse order. Your `visit_block()` adds a scope for local variables.
+
+While checking a method body, the scopes therefore look like:
+
+```txt
+[
+    fields,
+    parameters,
+    local variables
+]
+```
+
+Searching backward gives locals priority over parameters, then fields.
+
+Also, we **replace** the surrounding scopes temporarily. That prevents methods from seeing top-level variables.
+
+`owner=None` preserves the existing behavior for global functions.
+
+### 3. Check method bodies after registering all methods
+
+Inside **`SemanticChecker.visit_program()`**, immediately after this loop:
+
+```python
+        for statement in node.statements:
+            if isinstance(statement, StructNode):
+                self.collect_methods(statement)
+```
+
+insert:
+
+```python
+        for statement in node.statements:
+            if isinstance(statement, StructNode):
+                for method in statement.methods:
+                    self.visit_fn(method, owner=statement)
+```
+
+The checker now follows this order:
+
+```txt
+1. Register structs and global function signatures.
+2. Register member function signatures.
+3. Check member function bodies.
+4. Check global functions and top-level statements.
+```
+
+### What we get automatically
+
+Because a `FieldNode` already has `name`, `type_name`, and `mutable`, your existing checks can now:
+
+- Resolve `x` and `y` inside `d2()`.
+- Check arithmetic using their types.
+- Reject an unknown variable.
+- Reject assigning to a field without `mut`.
+- Check the method’s return type.
+
+For example:
+
+```txt
+struct Point
+{
+    i32 x
+
+    fn example := (i32 x) -> i32
+    {
+        exit x
+    }
+}
+```
+
+Here, `exit x` refers to the **parameter**, because parameters hide fields.
+
+**Important:** this only resolves names and checks bodies. It does not yet generate field-access LLVM or determine whether a method is mutating.
+
+Your current test still cannot compile normally because `MemberCallNode` has no semantic visitor yet. **That is our next small step: check `p.d2()` against `Point.method_map`.**
+
+================================================================================
+USER [message 110]
+================================================================================
+
+next
+
+================================================================================
+ASSISTANT [message 112]
+================================================================================
+
+## Next — check member calls
+
+Now we’ll teach the semantic checker to understand:
+
+```txt
+p.d2()
+c.center.d2()
+```
+
+It needs to check:
+
+1. The receiver is a struct object.
+2. That struct declares the method.
+3. The argument count and types are correct.
+4. The call’s result has the method’s declared return type.
+
+### 1. Add `visit_membercall()`
+
+Inside **`SemanticChecker`**, add this method, preferably after `visit_call()`:
+
+```python
+    def visit_membercall(self, node):
+        node.receiver.accept(self)
+        receiver_type = node.receiver.type
+        struct_node = self.structs.get(receiver_type)
+
+        if struct_node is None:
+            raise CompileError(
+                node.line,
+                node.column,
+                f"type '{receiver_type}' has no member functions",
+            )
+
+        fn = struct_node.method_map.get(node.name)
+
+        if fn is None:
+            raise CompileError(
+                node.line,
+                node.column,
+                f"member function '{node.name}' is not declared "
+                f"in struct '{struct_node.name}'",
+            )
+
+        node.fn = fn
+
+        if len(node.args) != len(fn.params):
+            raise CompileError(
+                node.line,
+                node.column,
+                f"member function '{node.name}' needs "
+                f"{len(fn.params)} arguments, got {len(node.args)}",
+            )
+
+        for param, arg in zip(fn.params, node.args):
+            arg.accept(self)
+            self.check_assignable(
+                arg,
+                param.type_name,
+                arg,
+                f"pass to '{param.name}' of '{fn.name}'",
+            )
+
+        node.type = fn.result_type
+        return node.type
+```
+
+### How it works
+
+For:
+
+```txt
+i32 b{c.center.d2()}
+```
+
+the checker follows this path:
+
+```txt
+Check c.center
+    → its type is Point
+
+Find Point in self.structs
+    → get Point's declaration
+
+Find d2 in Point.method_map
+    → get d2's declaration
+
+Check arguments
+    → d2 expects zero; we supplied zero
+
+Set the call's type
+    → i32
+```
+
+Your existing declaration checker then verifies that an `i32` result can initialize `b`.
+
+For:
+
+```txt
+i32 b{c.d2()}
+```
+
+it rejects the call because `Circle` does not declare `d2`.
+
+## 2. Test semantic checking without generating LLVM
+
+`--ast` does **not** run the semantic checker. Normal compilation runs both semantics and LLVM generation, but our LLVM support is not ready yet.
+
+So, from the project root, run this temporary command:
+
+```bash
+python3 - <<'PY'
+from src.compiler import (
+    CompileError,
+    SemanticChecker,
+    load_program,
+    print_error,
+)
+
+try:
+    program = load_program("tests/ok/member_decl.txt")
+    SemanticChecker().check(program)
+except CompileError as error:
+    print_error(error)
+    raise SystemExit(1)
+
+print("Semantic checks passed")
+PY
+```
+
+For your current test, the expected output is:
+
+```txt
+Semantic checks passed
+```
+
+This verifies the method bodies **and** both member calls without reaching the unfinished LLVM generator.
+
+**Still missing:** calls such as `d2()` from inside another method, mutation detection, and LLVM generation. Next we’ll handle those internal calls so methods can call each other.
+
+================================================================================
+USER — SELECTED TEXT / COMMENT CONTEXT [message 115]
+================================================================================
+
+The user selected these exact excerpts from earlier assistant responses as context for this turn. Selected text is quoted context, not a new instruction. A user comment is an instruction about its selected text:
+1. Selected text: "SemanticChecker"
+
+================================================================================
+USER [message 116]
+================================================================================
+
+Semantic checks passed
+
+================================================================================
+ASSISTANT [message 118]
+================================================================================
+
+Great—**your method bodies and explicit member calls now pass semantic checking.**
+
+## Next — allow one method to call another
+
+Inside a method, this:
+
+```txt
+d2()
+```
+
+must mean:
+
+```txt
+call d2 on the same object
+```
+
+The lookup order is:
+
+```txt
+method in the current struct → global function
+```
+
+### 1. Change the beginning of `SemanticChecker.visit_call()`
+
+Find:
+
+```python
+    def visit_call(self, node):
+        fn = self.fns.get(node.name)
+```
+
+Replace just those lines with:
+
+```python
+    def visit_call(self, node):
+        fn = None
+        node.implicit_receiver = False
+
+        if self.current_struct is not None:
+            fn = self.current_struct.method_map.get(node.name)
+            if fn is not None:
+                node.implicit_receiver = True
+
+        if fn is None:
+            fn = self.fns.get(node.name)
+```
+
+**Keep the rest of `visit_call()` unchanged.** It already checks whether the function exists, validates arguments, and sets the result type.
+
+### What is `implicit_receiver`?
+
+It records whether the call secretly needs the current object:
+
+```txt
+d2() inside Point
+    → implicit_receiver = True
+    → later, LLVM passes the current object's address
+
+global_function()
+    → implicit_receiver = False
+    → no hidden object argument
+```
+
+If a method and a global function have the same name, the method wins. Wrong arguments to that method produce an error—we do not fall back to the global function.
+
+### 2. Add a method to your test
+
+In `tests/ok/member_decl.txt`, add this **inside `Point`, after `d2()` and before Point’s closing brace**:
+
+```txt
+    fn twice_d2 := () -> i32
+    {
+        i32 result{d2() + d2()}
+        exit result
+    }
+```
+
+Then, near the bottom, before `exit b`, add:
+
+```txt
+i32 twice{p.twice_d2()}
+```
+
+The important part is:
+
+```txt
+d2() + d2()
+```
+
+Neither call names an object explicitly. Both use the same point that received `twice_d2()`.
+
+For `p{3, 4}`, the eventual result of `p.twice_d2()` will be `50`. We are not executing it yet.
+
+### 3. Run the same semantic-only command
+
+```bash
+python3 - <<'PY'
+from src.compiler import (
+    CompileError,
+    SemanticChecker,
+    load_program,
+    print_error,
+)
+
+try:
+    program = load_program("tests/ok/member_decl.txt")
+    SemanticChecker().check(program)
+except CompileError as error:
+    print_error(error)
+    raise SystemExit(1)
+
+print("Semantic checks passed")
+PY
+```
+
+Expected:
+
+```txt
+Semantic checks passed
+```
+
+**Next: mutation detection—how the compiler discovers that `shift()` changes its object, including when another method calls `shift()`.**
+
+================================================================================
+USER — SELECTED TEXT / COMMENT CONTEXT [message 121]
+================================================================================
+
+The user selected these exact excerpts from earlier assistant responses as context for this turn. Selected text is quoted context, not a new instruction. A user comment is an instruction about its selected text:
+1. Selected text: "fn = None"
+   User comment: "[{\n\t\"resource\": \"/d:/Dev/KSE/3 year/Languages and Compilers Design/project-shared/project1/src/compiler.py\",\n\t\"owner\": \"Pylance5\",\n\t\"severity\": 8,\n\t\"message\": \"Expected indented block\",\n\t\"source\": \"Pylance\",\n\t\"startLineNumber\": 1084,\n\t\"startColumn\": 9,\n\t\"endLineNumber\": 1084,\n\t\"endColumn\": 11,\n\t\"modelVersionId\": 42,\n\t\"origin\": \"extHost1\"\n}]"
+
+================================================================================
+ASSISTANT [message 124]
+================================================================================
+
+That error means **`fn = None` is not indented far enough beneath `def visit_call(...)`**, or an extra `def` line was left above it.
+
+Inside `SemanticChecker`, replace the **whole `visit_call()` method** with this. Use spaces, not tabs:
+
+```python
+    def visit_call(self, node):
+        fn = None
+        node.implicit_receiver = False
+
+        if self.current_struct is not None:
+            fn = self.current_struct.method_map.get(node.name)
+            if fn is not None:
+                node.implicit_receiver = True
+
+        if fn is None:
+            fn = self.fns.get(node.name)
+
+        if fn is None:
+            raise CompileError(
+                node.line,
+                node.column,
+                f"function '{node.name}' is not declared",
+            )
+
+        node.fn = fn
+
+        if len(node.args) != len(fn.params):
+            raise CompileError(
+                node.line,
+                node.column,
+                f"function '{node.name}' needs {len(fn.params)} arguments, "
+                f"got {len(node.args)}",
+            )
+
+        for param, arg in zip(fn.params, node.args):
+            arg.accept(self)
+            self.check_assignable(
+                arg,
+                param.type_name,
+                arg,
+                f"pass to '{param.name}' of '{fn.name}'",
+            )
+
+        node.type = fn.result_type
+        return node.type
+```
+
+Indentation should be:
+
+```txt
+class SemanticChecker:          ← 0 spaces
+    def visit_call(...):       ← 4 spaces
+        fn = None              ← 8 spaces
+```
+
+Make sure you edit the version in **`SemanticChecker`**, not `AstPrinter` or `CodeGenerator`.
+
+Then check Python syntax from the project root:
+
+```bash
+python3 -m py_compile src/compiler.py
+```
+
+**No output means the syntax check passed.** Then rerun the semantic-only test from the previous step.
+
+================================================================================
+USER [message 127]
+================================================================================
+
+Semantic checks passed
+
+================================================================================
+ASSISTANT [message 130]
+================================================================================
+
+Great—**calls between methods now pass semantic checking.**
+
+## Next — detect methods that directly change their object
+
+Start with this distinction:
+
+```txt
+x := x + dx
+```
+
+- If `x` is an **object field**, the method is mutating.
+- If `x` is a **local variable or parameter**, that does not make the method mutating.
+
+Your checker already records what each name refers to, so we can use that information.
+
+### 1. Give each method a mutation flag
+
+Inside **`SemanticChecker.collect_methods()`**, find:
+
+```python
+            self.collect_fn(method, struct_node.method_map)
+```
+
+Immediately before it, add:
+
+```python
+            method.mutating = False
+```
+
+So those lines become:
+
+```python
+            method.mutating = False
+            self.collect_fn(method, struct_node.method_map)
+```
+
+Every method starts as non-mutating. Assignments can change that flag to `True`.
+
+### 2. Mark assignments to object fields
+
+Inside **`SemanticChecker.visit_assign()`**, find the final check:
+
+```python
+        self.check_assignable(
+            node.value,
+            target_type,
+            node,
+            f"assign to '{'.'.join(chain)}'",
+        )
+```
+
+**Immediately after it**, still inside `visit_assign()`, add:
+
+```python
+        if (
+            self.current_struct is not None
+            and self.function is not None
+            and isinstance(node.decl, FieldNode)
+        ):
+            self.function.mutating = True
+```
+
+**Why `FieldNode`?**
+
+Your name lookup returns the actual declaration:
+
+```txt
+Object field     → FieldNode
+Local variable   → DeclNode
+Parameter        → ParamNode
+```
+
+This also handles an assignment through an object field, such as:
+
+```txt
+center.x := 5
+```
+
+Here, the base declaration `center` is a `FieldNode`, so the method changes part of its object.
+
+### 3. Add `shift()` to the test
+
+Inside `Point`, after the other methods, add:
+
+```txt
+    fn shift := (i32 dx) -> i32
+    {
+        x := x + dx
+        exit x
+    }
+```
+
+**Do not call it yet.** We are detecting mutation first; enforcing which objects may receive mutating calls comes later.
+
+### 4. Inspect the flags
+
+From the project root, run:
+
+```bash
+python3 - <<'PY'
+from src.compiler import SemanticChecker, load_program
+
+program = load_program("tests/ok/member_decl.txt")
+checker = SemanticChecker()
+checker.check(program)
+
+point = checker.structs["Point"]
+for method in point.methods:
+    print(f"{method.name}: mutating={method.mutating}")
+PY
+```
+
+Expected:
+
+```txt
+d2: mutating=False
+twice_d2: mutating=False
+shift: mutating=True
+```
+
+**This detects direct mutation only.** Next, we’ll propagate mutation through method calls: if `move()` calls `shift()` on the same object, `move()` must also become mutating—even when methods call each other in a cycle.
+
+================================================================================
+USER [message 133]
+================================================================================
+
+d2: mutating=False<br />twice\_d2: mutating=False<br />shift: mutating=True
+
+================================================================================
+ASSISTANT [message 135]
+================================================================================
+
+Exactly right: **`shift` changes a field; `d2` and `twice_d2` only read.**
+
+## Next — detect indirect mutation
+
+Consider:
+
+```txt
+fn move := (i32 dx) -> i32
+{
+    i32 result{shift(dx)}
+    exit result
+}
+```
+
+`move()` does not assign a field itself, but it calls `shift()` on the same object. **Therefore, `move()` is also mutating.**
+
+We’ll record these dependencies, then repeatedly update the flags until nothing changes.
+
+### 1. Give methods a dependency list
+
+Inside **`SemanticChecker.collect_methods()`**, find:
+
+```python
+            method.mutating = False
+```
+
+Add a line after it:
+
+```python
+            method.mutating = False
+            method.mutation_dependencies = []
+```
+
+This list means:
+
+> “If any method in this list is mutating, this method is mutating too.”
+
+### 2. Record calls on the same object
+
+Inside **`SemanticChecker.visit_call()`**, find:
+
+```python
+        node.fn = fn
+```
+
+Immediately after it, add:
+
+```python
+        if node.implicit_receiver:
+            self.function.mutation_dependencies.append(fn)
+```
+
+An implicit call such as `shift(dx)` inside a method uses the same object, so it creates a dependency.
+
+### 3. Record calls on the object’s fields
+
+Inside **`SemanticChecker.visit_membercall()`**, also find:
+
+```python
+        node.fn = fn
+```
+
+Immediately after it, add:
+
+```python
+        if (
+            self.current_struct is not None
+            and self.function is not None
+            and isinstance(node.receiver.decl, FieldNode)
+        ):
+            self.function.mutation_dependencies.append(fn)
+```
+
+This covers calls such as:
+
+```txt
+center.shift(dx)
+```
+
+when `center` is a field of the current object.
+
+It does **not** create a dependency when the receiver is a local variable or parameter: changing another object does not by itself mean changing the current object.
+
+### 4. Add the propagation method
+
+Inside **`SemanticChecker`**, add:
+
+```python
+    def propagate_mutation(self):
+        methods = [
+            method
+            for struct_node in self.structs.values()
+            for method in struct_node.methods
+        ]
+
+        changed = True
+        while changed:
+            changed = False
+
+            for method in methods:
+                if method.mutating:
+                    continue
+
+                if any(
+                    dependency.mutating
+                    for dependency in method.mutation_dependencies
+                ):
+                    method.mutating = True
+                    changed = True
+```
+
+**Why repeat?** Suppose:
+
+```txt
+move → shift
+move_twice → move
+```
+
+If `move_twice` is checked before `move` becomes mutating, another pass is needed.
+
+The process stops because flags only change from `False` to `True`.
+
+### 5. Run propagation after checking all bodies
+
+At the end of **`SemanticChecker.visit_program()`**, find:
+
+```python
+        node.exit_node.accept(self)
+```
+
+Add:
+
+```python
+        self.propagate_mutation()
+```
+
+So the end becomes:
+
+```python
+        node.exit_node.accept(self)
+        self.propagate_mutation()
+```
+
+Make sure this change is in **`SemanticChecker`**, not the other visitors.
+
+### 6. Test it
+
+Inside `Point`, add:
+
+```txt
+    fn move := (i32 dx) -> i32
+    {
+        i32 result{shift(dx)}
+        exit result
+    }
+```
+
+Run the same flag-inspection command again. Expected:
+
+```txt
+d2: mutating=False
+twice_d2: mutating=False
+shift: mutating=True
+move: mutating=True
+```
+
+**Next: enforce these flags**—reject a mutating call on a const object or through a const field. We must do that *after* propagation, when all mutation flags are final.
+
+================================================================================
+USER [message 138]
+================================================================================
+
+twice\_d2: mutating=False<br />shift: mutating=True<br />move: mutating=True
+
+================================================================================
+ASSISTANT [message 141]
+================================================================================
+
+Correct—**`move` is now marked mutating because it calls `shift`.**
+
+## Next — reject mutating calls through const objects or fields
+
+These should behave differently:
+
+```txt
+Point p{3, 4}
+i32 a{p.d2()}
+```
+
+Allowed: only reads `p`.
+
+```txt
+Point p{3, 4}
+i32 b{p.move(1)}
+```
+
+Rejected: changes `p`, but `p` is const.
+
+We must check this **after mutation propagation**, not while first checking the call.
+
+### 1. Store member calls for later checking
+
+Inside **`SemanticChecker.__init__()`**, add:
+
+```python
+        self.member_calls = []
+```
+
+### 2. Record each explicit member call
+
+At the end of **`SemanticChecker.visit_membercall()`**, find:
+
+```python
+        node.type = fn.result_type
+        return node.type
+```
+
+Change it to:
+
+```python
+        node.type = fn.result_type
+        self.member_calls.append(node)
+        return node.type
+```
+
+Only change this in **`visit_membercall()`**, not `visit_call()`.
+
+### 3. Add the mutation-rule check
+
+Inside **`SemanticChecker`**, add:
+
+```python
+    def check_mutating_calls(self):
+        for call in self.member_calls:
+            if not call.fn.mutating:
+                continue
+
+            receiver = call.receiver
+
+            if isinstance(receiver, FieldAccessNode):
+                mut_flags = receiver.mut_flags
+            else:
+                mut_flags = [receiver.decl.mutable]
+
+            if not all(mut_flags):
+                raise CompileError(
+                    call.line,
+                    call.column,
+                    f"cannot call mutating member function '{call.name}' "
+                    f"through a const object or field",
+                )
+```
+
+Your existing field-access checker already records the mutability of **every link**:
+
+```txt
+c.center
+    → [is c mut?, is center mut?]
+```
+
+`all(mut_flags)` is true only when every link is mutable.
+
+For a simple receiver such as `p`, we check just `p`’s declaration.
+
+### 4. Run it after propagation
+
+At the end of **`SemanticChecker.visit_program()`**, change:
+
+```python
+        node.exit_node.accept(self)
+        self.propagate_mutation()
+```
+
+to:
+
+```python
+        node.exit_node.accept(self)
+        self.propagate_mutation()
+        self.check_mutating_calls()
+```
+
+The order matters:
+
+```txt
+Check bodies → discover all mutating methods → validate calls
+```
+
+### 5. Test a const object
+
+In your test, add this before the final `exit`:
+
+```txt
+i32 moved{p.move(1)}
+```
+
+Keep the declaration as:
+
+```txt
+Point p{3, 4}
+```
+
+Run the **semantic-only command with error handling** from earlier. You should get an error like:
+
+```txt
+cannot call mutating member function 'move' through a const object or field
+```
+
+Then change the declaration to:
+
+```txt
+Point mut p{3, 4}
+```
+
+Run again. Expected:
+
+```txt
+Semantic checks passed
+```
+
+### 6. Test a const field
+
+Your `Circle` currently has:
+
+```txt
+    Point center
+```
+
+Even with:
+
+```txt
+Circle mut c{p, 2}
+```
+
+this must fail:
+
+```txt
+i32 moved_center{c.center.shift(1)}
+```
+
+To allow it, **both links** must be mutable:
+
+```txt
+struct Circle
+{
+    Point mut center
+    i32 radius
+}
+```
+
+and:
+
+```txt
+Circle mut c{p, 2}
+```
+
+**Why don’t we separately reject implicit `shift(dx)` inside `move()`?** That call makes `move` mutating. The restriction is then enforced when an object receives `move()`.
+
+After these tests, we’re ready for the LLVM part: passing the object’s address as the hidden first argument.
+
+================================================================================
+USER [message 144]
+================================================================================
+
+Traceback (most recent call last):<br />File "\<stdin>", line 5, in \<module><br />File "/home/ubuntu/languages-compilers-design/project1/src/compiler.py", line 968, in check<br />program.accept(self)<br />File "/home/ubuntu/languages-compilers-design/project1/src/compiler.py", line 36, in accept<br />return getattr(visitor, method\_name)(self)<br />\^\^\^\^\^\^\^\^\^\^\^\^\^\^\^\^\^\^\^\^\^\^\^\^\^\^\^\^\^\^\^\^\^\^\^<br />File "/home/ubuntu/languages-compilers-design/project1/src/compiler.py", line 993, in visit\_program<br />self.check\_mutating\_calls()<br />File "/home/ubuntu/languages-compilers-design/project1/src/compiler.py", line 1609, in check\_mutating\_calls<br />raise CompileError(<br />src.compiler.CompileError: cannot call mutating member function 'move' through a const object or field
+
+================================================================================
+ASSISTANT [message 146]
+================================================================================
+
+**That is the expected rejection if `p` is still const.** Your mutation check is working: `move()` changes the object through `shift()`.
+
+The traceback appears because the flag-inspection script does not catch `CompileError`. It does **not** mean the compiler itself crashed unexpectedly.
+
+### 1. Make the object mutable
+
+In `tests/ok/member_decl.txt`, change:
+
+```txt
+Point p{3, 4}
+```
+
+to:
+
+```txt
+Point mut p{3, 4}
+```
+
+Keep:
+
+```txt
+i32 moved{p.move(1)}
+```
+
+### 2. Use this command for cleaner diagnostics
+
+```bash
+python3 - <<'PY'
+from src.compiler import (
+    CompileError,
+    SemanticChecker,
+    load_program,
+    print_error,
+)
+
+try:
+    program = load_program("tests/ok/member_decl.txt")
+    checker = SemanticChecker()
+    checker.check(program)
+except CompileError as error:
+    print_error(error)
+    raise SystemExit(1)
+
+print("Semantic checks passed")
+for method in checker.structs["Point"].methods:
+    print(f"{method.name}: mutating={method.mutating}")
+PY
+```
+
+With `Point mut p`, it should pass—unless another mutating call goes through a const link.
+
+For example, `c.center.shift(1)` requires **both**:
+
+```txt
+Circle mut c{p, 2}
+```
+
+and, inside `Circle`:
+
+```txt
+Point mut center
+```
+
+Once that passes, we can move on to LLVM generation.
+
+================================================================================
+USER [message 149]
+================================================================================
+
+Semantic checks passed<br />d2: mutating=False<br />twice\_d2: mutating=False<br />shift: mutating=True<br />move: mutating=True
+
+================================================================================
+ASSISTANT [message 159]
+================================================================================
+
+Great—**direct mutation, indirect mutation, and const-object checks are working for this test.**
+
+## Next — declare LLVM member functions
+
+The key difference is the hidden first parameter:
+
+```txt
+Language: p.shift(2)
+
+LLVM: Point_shift(pointer_to_p, 2)
+```
+
+We’ll first create the LLVM function declarations. In the following step, we’ll generate their bodies.
+
+**All edits below are inside `CodeGenerator`.**
+
+### 1. Extend `declare_fn()`
+
+Replace **`CodeGenerator.declare_fn()`** with:
+
+```python
+    def declare_fn(self, node, owner=None):
+        node.owner = owner
+        param_types = [
+            self.llvm_type(param.type_name)
+            for param in node.params
+        ]
+
+        if owner is None:
+            name = "fn_" + node.name
+        else:
+            param_types.insert(
+                0,
+                self.llvm_type(owner.name).as_pointer(),
+            )
+            name = self.module.get_unique_name(
+                owner.name + "_" + node.name
+            )
+
+        fn_type = ir.FunctionType(
+            self.llvm_type(node.result_type),
+            param_types,
+        )
+        node.llvm_fn = ir.Function(
+            self.module,
+            fn_type,
+            name=name,
+        )
+```
+
+### What changed?
+
+For a global function:
+
+```txt
+add(i32 a, i32 b)
+```
+
+the parameters remain:
+
+```txt
+[i32, i32]
+```
+
+For `Point.shift(i32 dx)`, they become:
+
+```txt
+[pointer to Point, i32]
+```
+
+`node.owner` records which struct owns the method. Global functions have `owner=None`.
+
+`get_unique_name()` keeps generated LLVM names from colliding with other functions. Normally, this method will be named `Point_shift`.
+
+### 2. Declare methods after the structs and global functions
+
+Inside **`CodeGenerator.visit_program()`**, insert this **between its existing two loops**:
+
+```python
+        for statement in node.statements:
+            if isinstance(statement, StructNode):
+                for method in statement.methods:
+                    self.declare_fn(method, owner=statement)
+```
+
+The whole method should now be:
+
+```python
+    def visit_program(self, node):
+        for statement in node.statements:
+            if isinstance(statement, StructNode):
+                statement.accept(self)
+            elif isinstance(statement, FnNode):
+                self.declare_fn(statement)
+
+        for statement in node.statements:
+            if isinstance(statement, StructNode):
+                for method in statement.methods:
+                    self.declare_fn(method, owner=statement)
+
+        for statement in node.statements:
+            if isinstance(statement, StructNode):
+                continue
+            statement.accept(self)
+
+        node.exit_node.accept(self)
+```
+
+**Why declare all methods first?** Their LLVM function objects must exist before we generate bodies that call them—including recursive calls.
+
+### 3. Check Python syntax
+
+```bash
+python3 -m py_compile src/compiler.py
+```
+
+No output means the syntax check passed.
+
+**Normal compilation is still not ready.** We have prepared the function signatures, but we still need to generate method bodies, access fields through the hidden pointer, and generate member calls. Next we’ll wire up that hidden pointer.
+
+================================================================================
+USER [message 162]
+================================================================================
+
+passed
+
+================================================================================
+ASSISTANT [message 164]
+================================================================================
+
+Good—**the syntax check passed.** Now we’ll generate method bodies and make field access use the hidden object pointer.
+
+**All changes below are inside `CodeGenerator`.**
+
+## 1. Store the current object pointer
+
+Inside `CodeGenerator.__init__()`, add:
+
+```python
+        self.this_pointer = None
+```
+
+This will hold the address of the object whose method we are generating.
+
+## 2. Replace `CodeGenerator.visit_fn()`
+
+Use:
+
+```python
+    def visit_fn(self, node):
+        fn = node.llvm_fn
+        entry = fn.append_basic_block("entry")
+
+        saved_builder = self.builder
+        saved_function = self.function
+        saved_fn_node = self.fn_node
+        saved_this_pointer = self.this_pointer
+
+        self.function = fn
+        self.fn_node = node
+        self.builder = ir.IRBuilder(entry)
+        self.this_pointer = None
+
+        arguments = list(fn.args)
+
+        if node.owner is not None:
+            self.this_pointer = arguments[0]
+            self.this_pointer.name = "this"
+            arguments = arguments[1:]
+
+        for param, argument in zip(node.params, arguments):
+            argument.name = param.name
+            slot = self.create_entry_alloca(param.type_name, param.name)
+            self.builder.store(argument, slot)
+            param.pointer = slot
+
+        node.body.accept(self)
+
+        self.builder = saved_builder
+        self.function = saved_function
+        self.fn_node = saved_fn_node
+        self.this_pointer = saved_this_pointer
+```
+
+For a method such as `shift(dx)`, the LLVM arguments are:
+
+```txt
+[this, dx]
+```
+
+We keep `this` as a pointer. The remaining arguments follow your existing parameter-handling logic.
+
+## 3. Add a helper for finding a declaration’s address
+
+Inside `CodeGenerator`, add:
+
+```python
+    def declaration_pointer(self, decl):
+        if isinstance(decl, FieldNode):
+            index = self.fn_node.owner.fields.index(decl)
+            return self.builder.gep(
+                self.this_pointer,
+                [ir.Constant(I32, 0), ir.Constant(I32, index)],
+                name=f"{decl.name}.ptr",
+            )
+
+        return decl.pointer
+```
+
+This distinguishes two cases:
+
+```txt
+Local variable or parameter → use its allocated storage
+Object field                → calculate its address inside this
+```
+
+`gep` calculates an address—it does not read the value.
+
+## 4. Use the helper in three places
+
+### A. Replace `CodeGenerator.visit_var()`
+
+```python
+    def visit_var(self, node):
+        return self.builder.load(
+            self.declaration_pointer(node.decl),
+            name=f"{node.name}.value",
+        )
+```
+
+Now reading field `x` becomes:
+
+```txt
+Find x's address inside this → load x
+```
+
+### B. In `CodeGenerator.visit_fieldaccess()`
+
+Change:
+
+```python
+        pointer = node.decl.pointer
+```
+
+to:
+
+```python
+        pointer = self.declaration_pointer(node.decl)
+```
+
+Keep the rest unchanged. This also supports nested fields inside methods.
+
+### C. In `CodeGenerator.visit_assign()`
+
+Make the same replacement:
+
+```python
+        pointer = self.declaration_pointer(node.decl)
+```
+
+Keep the remaining assignment logic unchanged.
+
+Now:
+
+```txt
+x := x + dx
+```
+
+will generate the required operations:
+
+```txt
+gep → load → add → store
+```
+
+## 5. Generate method bodies
+
+Inside **`CodeGenerator.visit_program()`**, immediately after the loop that declares all methods, insert:
+
+```python
+        for statement in node.statements:
+            if isinstance(statement, StructNode):
+                for method in statement.methods:
+                    self.visit_fn(method)
+```
+
+The order is now:
+
+```txt
+1. Create struct types and declare global functions.
+2. Declare all member functions.
+3. Generate member-function bodies.
+4. Generate global-function bodies and top-level statements.
+5. Generate the top-level exit.
+```
+
+## Check syntax again
+
+```bash
+python3 -m py_compile src/compiler.py
+```
+
+**Do not run normal compilation yet:** `twice_d2()` and `move()` need the hidden pointer passed when they call another method. That, plus explicit calls such as `p.d2()`, is the next step.
+
+================================================================================
+USER [message 167]
+================================================================================
+
+next
+
+================================================================================
+ASSISTANT [message 169]
+================================================================================
+
+## Next — generate member calls in LLVM
+
+We now have method signatures and bodies. The remaining connection is **passing the object’s address when calling a method**.
+
+**All edits below are inside `CodeGenerator`.**
+
+### 1. Handle calls on the current object
+
+Inside **`CodeGenerator.visit_call()`**, find:
+
+```python
+        args = []
+```
+
+Immediately after it, add:
+
+```python
+        if getattr(node, "implicit_receiver", False):
+            args.append(self.this_pointer)
+```
+
+The whole method should become:
+
+```python
+    def visit_call(self, node):
+        args = []
+
+        if getattr(node, "implicit_receiver", False):
+            args.append(self.this_pointer)
+
+        for param, arg_node in zip(node.fn.params, node.args):
+            value = arg_node.accept(self)
+            value = self.coerce(value, arg_node.type, param.type_name)
+            args.append(value)
+
+        return self.builder.call(
+            node.fn.llvm_fn,
+            args,
+            name=f"{node.name}.result",
+        )
+```
+
+Now `shift(dx)` inside `move()` passes:
+
+```txt
+[current object's address, dx]
+```
+
+Global calls still pass only their ordinary arguments.
+
+### 2. Add a helper for the receiver’s address
+
+Inside `CodeGenerator`, add:
+
+```python
+    def receiver_pointer(self, receiver):
+        pointer = self.declaration_pointer(receiver.decl)
+
+        if isinstance(receiver, FieldAccessNode):
+            for index in receiver.indices:
+                pointer = self.builder.gep(
+                    pointer,
+                    [ir.Constant(I32, 0), ir.Constant(I32, index)],
+                    name="receiver.ptr",
+                )
+
+        return pointer
+```
+
+For:
+
+```txt
+p.d2()
+```
+
+this returns `p`’s allocated address.
+
+For:
+
+```txt
+c.center.d2()
+```
+
+it calculates the address of `center` **inside `c`**.
+
+**We do not load or copy the receiver.** The method must receive the address of the original object.
+
+### 3. Add the member-call generator
+
+Inside `CodeGenerator`, add:
+
+```python
+    def visit_membercall(self, node):
+        args = [self.receiver_pointer(node.receiver)]
+
+        for param, arg_node in zip(node.fn.params, node.args):
+            value = arg_node.accept(self)
+            value = self.coerce(value, arg_node.type, param.type_name)
+            args.append(value)
+
+        return self.builder.call(
+            node.fn.llvm_fn,
+            args,
+            name=f"{node.name}.result",
+        )
+```
+
+The semantic checker already resolved `node.fn`, so the generator knows exactly which LLVM function to call.
+
+## 4. Run a complete test
+
+Create **`tests/ok/member_execution.txt`**:
+
+```txt
+struct Point
+{
+    i32 mut x
+    i32 mut y
+
+    fn d2 := () -> i32
+    {
+        i32 r{x * x + y * y}
+        exit r
+    }
+
+    fn shift := (i32 dx) -> i32
+    {
+        x := x + dx
+        exit x
+    }
+
+    fn move := (i32 dx) -> i32
+    {
+        i32 result{shift(dx)}
+        exit result
+    }
+}
+Point mut p{3, 4}
+i32 before{p.d2()}
+i32 moved{p.move(2)}
+i32 after{p.d2()}
+i32 result{before + moved + after}
+exit result
+```
+
+Run:
+
+```bash
+python3 src/compiler.py tests/ok/member_execution.txt output.ll
+lli output.ll
+```
+
+Expected:
+
+```txt
+Program exit with result 71
+```
+
+Why:
+
+```txt
+before = 3*3 + 4*4 = 25
+moved  = 5
+after  = 5*5 + 4*4 = 41
+
+result = 25 + 5 + 41 = 71
+```
+
+**This tests both call forms:** `p.move(2)` explicitly receives `p`, then `shift(dx)` implicitly receives that same object.
+
+Create **`tests/ok/member_execution.expected`** containing:
+
+```txt
+Program exit with result 71
+```
+
+Include a newline at the end. If execution gives `71`, we have our first end-to-end member-function test working.
+
+================================================================================
+USER [message 172]
+================================================================================
+
+Program exit with result 71
+
+================================================================================
+ASSISTANT [message 174]
+================================================================================
+
+Great—**the end-to-end test works.** `move()` called `shift()` on the original object, and the later `d2()` saw the changed field.
+
+## Next — test nested receivers and struct copying
+
+We still need to verify:
+
+```txt
+c.center.d2()
+```
+
+and that copying a struct preserves the right values.
+
+### 1. Create `tests/ok/pr7_task1.txt`
+
+This is the assignment’s main example:
+
+```txt
+struct Point
+{
+    i32 mut x
+    i32 mut y
+
+    fn d2 := () -> i32
+    {
+        i32 r{x * x + y * y}
+        exit r
+    }
+
+    fn shift := (i32 dx) -> i32
+    {
+        x := x + dx
+        exit x
+    }
+}
+struct Circle
+{
+    Point center
+    i32 radius
+
+    fn area2 := () -> i32
+    {
+        i32 a{radius * radius * 3}
+        exit a
+    }
+}
+Point mut p{3, 4}
+i32 d{p.d2()}
+i32 nx{p.shift(2)}
+Circle c{p, 2}
+i32 a{c.area2()}
+i32 cd{c.center.d2()}
+i32 result{d + nx + a + cd}
+exit result
+```
+
+### 2. Compile and run
+
+```bash
+python3 src/compiler.py tests/ok/pr7_task1.txt output.ll
+lli output.ll
+```
+
+Expected:
+
+```txt
+Program exit with result 83
+```
+
+The values should be:
+
+| Variable | Value | Reason |
+|---|---:|---|
+| `d` | 25 | Original point: `3*3 + 4*4` |
+| `nx` | 5 | `shift(2)` changes `p.x` to 5 |
+| `a` | 12 | `2*2*3` |
+| `cd` | 41 | `c.center` copied the already-shifted point |
+
+Total: `25 + 5 + 12 + 41 = 83`.[^https://app.notion.com/p/3fb73e86a4208059a474c2c542460c17]
+
+Notice that `c` and `center` are const. **That is allowed because `d2()` is non-mutating.**
+
+### 3. Add its expected output
+
+Create `tests/ok/pr7_task1.expected`:
+
+```txt
+Program exit with result 83
+```
+
+Include a newline at the end.
+
+### 4. Inspect the generated pointer operations
+
+Because `output.ll` now contains this example, run:
+
+```bash
+grep -n -A 25 'define.*Point_shift' output.ll
+```
+
+Look for:
+
+- A first parameter that is a pointer, named `this`.
+- `getelementptr` to locate `x`.
+- `load`, `add`, and `store`.
+
+Depending on your LLVM version, the pointer type may appear as `%"Point"*` or `ptr`. Either representation is fine.
+
+**Once this gives `83`, we’ll check that the earlier tests still work before adding `read()` and `print()`.**
+
+================================================================================
+USER [message 177]
+================================================================================
+
+ubuntu@noble3:\~/languages-compilers-design/project1\$ grep -n -A 25 'define.<i>Point\_shift' output.ll<br />76:define i32 @"Point\_shift"(%"Point"</i> %"this", i32 %"dx")<br />77-\{<br />78-entry:<br />79-  %"dx.1" = alloca i32<br />80-  store i32 %"dx", i32\* %"dx.1"<br />81-  %"x.ptr" = getelementptr %"Point", %"Point"\* %"this", i32 0, i32 0<br />82-  %"x.value" = load i32, i32\* %"x.ptr"<br />83-  %"dx.value" = load i32, i32\* %"dx.1"<br />84-  %"add.result" = add i32 %"x.value", %"dx.value"<br />85-  %"x.ptr.1" = getelementptr %"Point", %"Point"\* %"this", i32 0, i32 0<br />86-  store i32 %"add.result", i32\* %"x.ptr.1"<br />87-  %"x.ptr.2" = getelementptr %"Point", %"Point"\* %"this", i32 0, i32 0<br />88-  %"x.value.1" = load i32, i32\* %"x.ptr.2"<br />89-  ret i32 %"x.value.1"<br />90-\}<br />91-<br />92-define i32 @"Circle\_area2"(%"Circle"\* %"this")<br />93-\{<br />94-entry:<br />95-  %"a" = alloca i32<br />96-  %"radius.ptr" = getelementptr %"Circle", %"Circle"\* %"this", i32 0, i32 1<br />97-  %"radius.value" = load i32, i32\* %"radius.ptr"<br />98-  %"radius.ptr.1" = getelementptr %"Circle", %"Circle"\* %"this", i32 0, i32 1<br />99-  %"radius.value.1" = load i32, i32\* %"radius.ptr.1"<br />100-  %"mul.result" = mul i32 %"radius.value", %"radius.value.1"<br />101-  %"mul.result.1" = mul i32 %"mul.result", 3<br />ubuntu@noble3:\~/languages-compilers-design/project1\$
+
+================================================================================
+ASSISTANT [message 179]
+================================================================================
+
+**That IR is correct for `Point_shift`.** Here’s how it matches `x := x + dx`:
+
+| Line | Operation | Meaning |
+|---|---|---|
+| 76 | Pointer parameter `this` | Receives the original point’s address |
+| 81 | `getelementptr` | Finds `x` inside that point |
+| 82 | `load` | Reads the current `x` |
+| 83 | `load` | Reads `dx` |
+| 84 | `add` | Calculates `x + dx` |
+| 86 | `store` | Writes the result back into the original point |
+| 89 | `ret` | Returns the updated `x` |
+
+The repeated address calculations are valid; optimization can simplify them later. **No need to change them.**
+
+## Next — run the regression tests
+
+First, if you haven’t already run the main example:
+
+```bash
+lli output.ll
+```
+
+Expected:
+
+```txt
+Program exit with result 83
+```
+
+Then run:
+
+```bash
+python3 check.py
+```
+
+### One possible housekeeping issue
+
+Our temporary `tests/ok/member_decl.txt` may still have no `.expected` file. Your test runner requires one for every `.txt` in `tests/ok`.
+
+Rather than guessing its output after our edits, move this scratch test into the existing manual-test folder:
+
+```bash
+mv tests/ok/member_decl.txt tests/manual/member_decl.txt
+```
+
+Keep these two completed tests in `tests/ok`, with their matching `.expected` files:
+
+```txt
+member_execution.txt       → 71
+pr7_task1.txt               → 83
+```
+
+Then rerun:
+
+```bash
+python3 check.py
+```
+
+**Send the final passed/failed counts and any failure details.** This checks that our member-function changes have not broken the earlier practices before we start `read()` and `print()`.
+
+================================================================================
+USER [message 182]
+================================================================================
+
+ubuntu@noble3:\~/languages-compilers-design/project1\$ lli output.ll<br />Program exit with result 83<br />ubuntu@noble3:\~/languages-compilers-design/project1\$ python3 [check.py](http://check.py/)<br />RESULT   KIND     TEST<br />------------------------------------------------------------------------<br />PASS     valid    tests/ok/assignment\_both\_arms.txt<br />PASS     valid    tests/ok/bool\_compare.txt<br />PASS     valid    tests/ok/bool\_exit.txt<br />PASS     valid    tests/ok/exit\_in\_else.txt<br />PASS     valid    tests/ok/field\_chain.txt<br />PASS     valid    tests/ok/field\_write.txt<br />PASS     valid    tests/ok/i32\_to\_i64\_param.txt<br />PASS     valid    tests/ok/i64\_constant.txt<br />PASS     valid    tests/ok/i64\_widen.txt<br />PASS     valid    tests/ok/if\_else\_assignment.txt<br />PASS     valid    tests/ok/if\_nested.txt<br />PASS     valid    tests/ok/if\_without\_else.txt<br />PASS     valid    tests/ok/integer\_compare.txt<br />FAIL     valid    tests/ok/member\_decl.txt<br />missing .expected file<br />FAIL     valid    tests/ok/member\_execution.txt<br />missing .expected file<br />PASS     valid    tests/ok/mixed\_arithmetic.txt<br />PASS     valid    tests/ok/nested\_calls.txt<br />PASS     valid    tests/ok/nested\_init.txt<br />PASS     valid    tests/ok/nested\_pair.txt<br />PASS     valid    tests/ok/not\_condition.txt<br />PASS     valid    tests/ok/param\_copy.txt<br />FAIL     valid    tests/ok/pr7\_task1.txt<br />expected b'Program exit with result 83'; got b'Program exit with result 83\\n'<br />PASS     valid    tests/ok/precedence.txt<br />PASS     valid    tests/ok/scope\_shadow\_type.txt<br />PASS     valid    tests/ok/struct\_basic.txt<br />PASS     valid    tests/ok/struct\_param.txt<br />PASS     valid    tests/ok/struct\_result.txt<br />PASS     valid    tests/ok/task1.txt<br />PASS     valid    tests/ok/task3\_example.txt<br />PASS     invalid  tests/err/bool\_arithmetic.txt<br />PASS     invalid  tests/err/condition\_not\_bool.txt<br />PASS     invalid  tests/err/const\_assignment.txt<br />PASS     invalid  tests/err/constant\_i32\_overflow.txt<br />PASS     invalid  tests/err/constant\_i64\_overflow.txt<br />PASS     invalid  tests/err/duplicate\_in\_block.txt<br />PASS     invalid  tests/err/else\_without\_if.txt<br />PASS     invalid  tests/err/empty\_block.txt<br />PASS     invalid  tests/err/field\_const\_middle.txt<br />PASS     invalid  tests/err/field\_const\_write.txt<br />PASS     invalid  tests/err/field\_unknown.txt<br />PASS     invalid  tests/err/fn\_after\_statement.txt<br />PASS     invalid  tests/err/fn\_assign\_param.txt<br />PASS     invalid  tests/err/fn\_exit\_wrong\_type.txt<br />PASS     invalid  tests/err/fn\_top\_level\_var.txt<br />PASS     invalid  tests/err/fn\_unknown.txt<br />PASS     invalid  tests/err/fn\_wrong\_arg\_count.txt<br />PASS     invalid  tests/err/fn\_wrong\_arg\_type.txt<br />PASS     invalid  tests/err/if\_brace\_same\_line.txt<br />PASS     invalid  tests/err/integer\_to\_bool.txt<br />PASS     invalid  tests/err/mixed\_comparison.txt<br />PASS     invalid  tests/err/narrowing\_assignment.txt<br />PASS     invalid  tests/err/narrowing\_initialiser.txt<br />PASS     invalid  tests/err/nested\_builtin.txt<br />PASS     invalid  tests/err/nested\_wrong\_count.txt<br />PASS     invalid  tests/err/not\_integer.txt<br />PASS     invalid  tests/err/out\_of\_scope.txt<br />PASS     invalid  tests/err/shadow\_type\_assignment.txt<br />PASS     invalid  tests/err/single\_equals.txt<br />PASS     invalid  tests/err/statement\_after\_block\_exit.txt<br />PASS     invalid  tests/err/struct\_after\_fn.txt<br />PASS     invalid  tests/err/struct\_after\_statement.txt<br />PASS     invalid  tests/err/struct\_builtin\_too\_many\_values.txt<br />PASS     invalid  tests/err/struct\_copy\_type\_mismatch.txt<br />PASS     invalid  tests/err/struct\_duplicate.txt<br />PASS     invalid  tests/err/struct\_duplicate\_field.txt<br />PASS     invalid  tests/err/struct\_field\_type\_mismatch.txt<br />PASS     invalid  tests/err/struct\_inside\_if.txt<br />PASS     invalid  tests/err/struct\_nested\_field\_mismatch.txt<br />PASS     invalid  tests/err/struct\_no\_fields.txt<br />PASS     invalid  tests/err/struct\_self\_reference.txt<br />PASS     invalid  tests/err/struct\_unknown\_field\_type.txt<br />PASS     invalid  tests/err/struct\_unknown\_object\_type.txt<br />PASS     invalid  tests/err/struct\_wrong\_value\_count.txt<br />PASS     invalid  tests/err/unclosed\_block.txt<br />PASS     invalid  tests/err/use\_before\_declaration.txt<br /><br />Passed: 72<br />Failed: 3<br />ubuntu@noble3:\~/languages-compilers-design/project1\$ mv tests/ok/member\_decl.txt tests/manual/member\_decl.txt<br />ubuntu@noble3:\~/languages-compilers-design/project1\$ python3 [check.py](http://check.py/)<br />RESULT   KIND     TEST<br />------------------------------------------------------------------------<br />PASS     valid    tests/ok/assignment\_both\_arms.txt<br />PASS     valid    tests/ok/bool\_compare.txt<br />PASS     valid    tests/ok/bool\_exit.txt<br />PASS     valid    tests/ok/exit\_in\_else.txt<br />PASS     valid    tests/ok/field\_chain.txt<br />PASS     valid    tests/ok/field\_write.txt<br />PASS     valid    tests/ok/i32\_to\_i64\_param.txt<br />PASS     valid    tests/ok/i64\_constant.txt<br />PASS     valid    tests/ok/i64\_widen.txt<br />PASS     valid    tests/ok/if\_else\_assignment.txt<br />PASS     valid    tests/ok/if\_nested.txt<br />PASS     valid    tests/ok/if\_without\_else.txt<br />PASS     valid    tests/ok/integer\_compare.txt<br />FAIL     valid    tests/ok/member\_execution.txt<br />missing .expected file<br />PASS     valid    tests/ok/mixed\_arithmetic.txt<br />PASS     valid    tests/ok/nested\_calls.txt<br />PASS     valid    tests/ok/nested\_init.txt<br />PASS     valid    tests/ok/nested\_pair.txt<br />PASS     valid    tests/ok/not\_condition.txt<br />PASS     valid    tests/ok/param\_copy.txt<br />FAIL     valid    tests/ok/pr7\_task1.txt<br />expected b'Program exit with result 83'; got b'Program exit with result 83\\n'<br />PASS     valid    tests/ok/precedence.txt<br />PASS     valid    tests/ok/scope\_shadow\_type.txt<br />PASS     valid    tests/ok/struct\_basic.txt<br />PASS     valid    tests/ok/struct\_param.txt<br />PASS     valid    tests/ok/struct\_result.txt<br />PASS     valid    tests/ok/task1.txt<br />PASS     valid    tests/ok/task3\_example.txt<br />PASS     invalid  tests/err/bool\_arithmetic.txt<br />PASS     invalid  tests/err/condition\_not\_bool.txt<br />PASS     invalid  tests/err/const\_assignment.txt<br />PASS     invalid  tests/err/constant\_i32\_overflow.txt<br />PASS     invalid  tests/err/constant\_i64\_overflow.txt<br />PASS     invalid  tests/err/duplicate\_in\_block.txt<br />PASS     invalid  tests/err/else\_without\_if.txt<br />PASS     invalid  tests/err/empty\_block.txt<br />PASS     invalid  tests/err/field\_const\_middle.txt<br />PASS     invalid  tests/err/field\_const\_write.txt<br />PASS     invalid  tests/err/field\_unknown.txt<br />PASS     invalid  tests/err/fn\_after\_statement.txt<br />PASS     invalid  tests/err/fn\_assign\_param.txt<br />PASS     invalid  tests/err/fn\_exit\_wrong\_type.txt<br />PASS     invalid  tests/err/fn\_top\_level\_var.txt<br />PASS     invalid  tests/err/fn\_unknown.txt<br />PASS     invalid  tests/err/fn\_wrong\_arg\_count.txt<br />PASS     invalid  tests/err/fn\_wrong\_arg\_type.txt<br />PASS     invalid  tests/err/if\_brace\_same\_line.txt<br />PASS     invalid  tests/err/integer\_to\_bool.txt<br />PASS     invalid  tests/err/mixed\_comparison.txt<br />PASS     invalid  tests/err/narrowing\_assignment.txt<br />PASS     invalid  tests/err/narrowing\_initialiser.txt<br />PASS     invalid  tests/err/nested\_builtin.txt<br />PASS     invalid  tests/err/nested\_wrong\_count.txt<br />PASS     invalid  tests/err/not\_integer.txt<br />PASS     invalid  tests/err/out\_of\_scope.txt<br />PASS     invalid  tests/err/shadow\_type\_assignment.txt<br />PASS     invalid  tests/err/single\_equals.txt<br />PASS     invalid  tests/err/statement\_after\_block\_exit.txt<br />PASS     invalid  tests/err/struct\_after\_fn.txt<br />PASS     invalid  tests/err/struct\_after\_statement.txt<br />PASS     invalid  tests/err/struct\_builtin\_too\_many\_values.txt<br />PASS     invalid  tests/err/struct\_copy\_type\_mismatch.txt<br />PASS     invalid  tests/err/struct\_duplicate.txt<br />PASS     invalid  tests/err/struct\_duplicate\_field.txt<br />PASS     invalid  tests/err/struct\_field\_type\_mismatch.txt<br />PASS     invalid  tests/err/struct\_inside\_if.txt<br />PASS     invalid  tests/err/struct\_nested\_field\_mismatch.txt<br />PASS     invalid  tests/err/struct\_no\_fields.txt<br />PASS     invalid  tests/err/struct\_self\_reference.txt<br />PASS     invalid  tests/err/struct\_unknown\_field\_type.txt<br />PASS     invalid  tests/err/struct\_unknown\_object\_type.txt<br />PASS     invalid  tests/err/struct\_wrong\_value\_count.txt<br />PASS     invalid  tests/err/unclosed\_block.txt<br />PASS     invalid  tests/err/use\_before\_declaration.txt<br /><br />Passed: 72<br />Failed: 2<br />ubuntu@noble3:\~/languages-compilers-design/project1\$
+
+================================================================================
+ASSISTANT [message 184]
+================================================================================
+
+**All earlier tests passed. The two remaining failures are expected-output file issues, not compiler errors.**
+
+### Fix both files
+
+Run these commands from the project root:
+
+```bash
+printf 'Program exit with result 71\n' > tests/ok/member_execution.expected
+printf 'Program exit with result 83\n' > tests/ok/pr7_task1.expected
+```
+
+This:
+
+- Creates the missing `member_execution.expected`.
+- Adds the missing final newline to `pr7_task1.expected`.
+
+In the error message, `\n` means **a newline character**. The test compares the complete output, so that character matters.
+
+### Run again
+
+```bash
+python3 check.py
+```
+
+With the same test files, you should now get:
+
+```txt
+Passed: 74
+Failed: 0
+```
+
+No changes to `check.py` are needed for these failures. After this passes, we’ll add `read()`.
+
+================================================================================
+USER [message 187]
+================================================================================
+
+Passed: 74<br />Failed: 0
+
+================================================================================
+ASSISTANT [message 189]
+================================================================================
+
+Great—**74 passed, 0 failed.** Our member-function changes pass the current regression suite.
+
+## Next — add `read()`
+
+We’ll reuse `CallNode` for this built-in:
+
+```txt
+i32 value{read()}
+```
+
+It takes **zero arguments** and returns an **`i32`**.
+
+### 1. Reserve the name in the lexer
+
+In **`src/lexer.py`**, add `"read"` to `KEYWORDS`:
+
+```python
+    "read",
+```
+
+This prevents declarations from using `read` as an identifier.
+
+### 2. Let the parser recognize `read()`
+
+Inside **`Parser.parse_factor()`**, insert this **before** the identifier case:
+
+```python
+        if token.text == "read":
+            self.eat()
+            return self.parse_call(token)
+```
+
+We reuse `parse_call()` to read the parentheses and arguments. The semantic checker will reject arguments.
+
+Your existing `parse_exit()` already accepts a factor, so this also allows:
+
+```txt
+exit read()
+```
+
+### 3. Check the built-in’s arguments and type
+
+At the **very beginning** of **`SemanticChecker.visit_call()`**, before `fn = None`, add:
+
+```python
+        if node.name == "read":
+            if node.args:
+                raise CompileError(
+                    node.line,
+                    node.column,
+                    "read() takes no arguments",
+                )
+
+            node.type = "i32"
+            return node.type
+```
+
+This bypasses ordinary function lookup: `read` is a built-in, not a user-declared function.
+
+### 4. Declare `scanf` in LLVM
+
+Inside **`CodeGenerator.__init__()`**, after creating `self.printf`, add:
+
+```python
+        self.scanf = ir.Function(
+            self.module,
+            ir.FunctionType(I32, [I8.as_pointer()], var_arg=True),
+            name="scanf",
+        )
+        self.read_format = self.global_string(
+            "read_format",
+            b"%d\0",
+        )
+```
+
+Like `printf`, `scanf` is declared without a body. Its implementation comes from the runtime.
+
+### 5. Generate the read operation
+
+At the **very beginning** of **`CodeGenerator.visit_call()`**, before `args = []`, add:
+
+```python
+        if node.name == "read":
+            slot = self.create_entry_alloca("i32", "read.slot")
+
+            self.builder.call(
+                self.scanf,
+                [self.pointer(self.read_format), slot],
+            )
+
+            return self.builder.load(slot, name="read.value")
+```
+
+The operations are:
+
+```txt
+Allocate an i32 slot in entry
+    → scanf writes the input into that slot
+    → load the number from the slot
+```
+
+**Only the allocation goes in the entry block.** The actual `scanf` call stays where `read()` appears, which is important inside branches and loops.
+
+## 6. Test it manually
+
+For now, create **`tests/manual/read_sum.txt`**:
+
+```txt
+i32 a{read()}
+i32 b{read()}
+i32 result{a + b}
+exit result
+```
+
+Compile and run:
+
+```bash
+python3 src/compiler.py tests/manual/read_sum.txt output.ll
+printf '3 4\n' | lli output.ll
+```
+
+Expected:
+
+```txt
+Program exit with result 7
+```
+
+Also rerun:
+
+```bash
+python3 check.py
+```
+
+The existing suite should still report:
+
+```txt
+Passed: 74
+Failed: 0
+```
+
+We’re keeping the input test in `tests/manual` temporarily because `check.py` does not yet supply input files. **After `read()` works, we’ll update the runner to handle `.in` files.**
+
+================================================================================
+USER [message 192]
+================================================================================
+
+can u complete other tasks file project1.zip (application/x-zip-compressed, 65096843 bytes, file_id f2999bb4-d2db-4392-836d-90ca9bceee5b)
+
+================================================================================
+ASSISTANT [message 194]
+================================================================================
+
+I’ll inspect the updated project, finish the remaining required features and tests, and return the edited files with a summary of what I could verify.
+
+================================================================================
+ASSISTANT [message 253]
+================================================================================
+
+The updated project passes all 74 existing tests. I’ve added `read()`, printing, string literals, loop support, and `.in` file handling. Next I’m testing those features and finishing the optional call-chaining task.
+
+================================================================================
+ASSISTANT [message 286]
+================================================================================
+
+All 136 tests pass in both runners, including the optional example’s result of `46`. I also verified the generated LLVM for all 48 valid programs and checked that every allocation stays at the start of its function. I’m packaging the files and a short change guide now.
+
+================================================================================
+ASSISTANT [message 316]
+================================================================================
+
+**Completed the remaining required tasks and the optional chaining task.**
+
+<file source="session-file://6e80642a-5d47-44ea-8f6f-3943635f3301">project1-practice7-completed.zip</file>
+
+### What’s included
+- `read()` with argument checking.
+- `print()` for integers, booleans, strings, and nested structs—including function results.
+- String literals without escape processing.
+- Printing and input inside functions, methods, branches, and loops.
+- `.in` file support in both test runners.
+- **Bonus:** chains such as `p.moved(1).shift(2)` and `origin().moved(7).x`.
+- 62 new tests, updated `ai_usage.txt`, and documentation.
+
+I preserved your existing code structure and comments.
+
+### Verified
+- **136 passed, 0 failed** in both test runners.
+- Valid LLVM and entry-first allocations for all 48 valid programs.
+- Required example: **83**.
+- Bonus example: **46**.
+
+### How to use it
+1. Back up your current project.
+2. Extract the archive separately, then copy the updated files into your repository. **Keep your existing `.git` and virtual environment.**
+3. Run:
+   ```bash
+   python3 check.py
+   ```
+4. Read `PRACTICE7_CHANGES.md` for explanations and demonstration commands.
+
+**Not done:** pushing to GitHub or opening the PR. Review the changes and `ai_usage.txt`, rerun locally, then submit on `practice-7`.
+
+================================================================================
+USER [message 319]
+================================================================================
+
+check if everything is ok, i see some extra files file pasted-text.txt (text/plain, 34684 bytes, file_id 7448e90a-2119-448c-9cd8-3283c8b23d62)
+
+================================================================================
+ASSISTANT [message 337]
+================================================================================
+
+**The file layout looks right. Most “extra files” are intentional tests.** However, your latest changes are **not staged yet**, so committing now would save an incomplete version.
+
+## 1. Why Git lists `src/compiler.py` twice
+
+You ran `git add .` **before copying the completed files**.
+
+Therefore:
+- **Staged changes:** your earlier implementation.
+- **Unstaged changes:** the completed implementation.
+
+This is normal. Running `git add` again updates the staged version.
+
+Also, plain `git diff` shows only **unstaged** changes. To inspect staged changes, use:
+
+```bash
+git diff --cached
+```
+
+## 2. Which files should stay?
+
+| Files | Keep? | Purpose |
+|---|---|---|
+| `src/compiler.py`, `src/lexer.py` | **Yes** | Compiler implementation |
+| `check.py`, `run_tests.sh` | **Yes** | Updated test runners |
+| `tests/ok/pr7_*`, `tests/err/pr7_*` | **Yes** | New tests |
+| `.expected` files | **Yes** | Expected output or diagnostic for each test |
+| `.in` files | **Yes** | Input supplied to programs using `read()` |
+| `ai_usage.txt` | **Yes—required** | Records AI assistance |
+| `README.md`, `grammar.ebnf` | **Yes** | Updated documentation |
+| `PRACTICE7_CHANGES.md` | Optional | Explanation of the changes |
+| `tests/manual/member_decl.txt` | Optional | Our earlier scratch test |
+| `practice7-completion.patch` | Not needed for submission | Alternate way to apply the same changes |
+| `task3-full.patch` | Not needed for Practice 7 | Older patch already in your project |
+| `output.ll` | Keep locally for demonstration | Generated LLVM, not source code |
+
+**Keep the root-level `compiler.py` and `lexer.py`.** They are compatibility wrappers, not accidental duplicates.
+
+Do not delete earlier tests.
+
+## 3. Verify your local copy
+
+The attachment contains Git status and diffs, **not a new test run**, so it does not confirm that your local copy passes yet.
+
+Run:
+
+```bash
+python3 check.py
+bash run_tests.sh
+```
+
+Both should finish with:
+
+```txt
+Passed: 136
+Failed: 0
+```
+
+## 4. Stage the completed version
+
+After the tests pass:
+
+```bash
+git add src/ tests/ok/ tests/err/
+git add check.py run_tests.sh grammar.ebnf README.md ai_usage.txt
+```
+
+If you want to include the change guide:
+
+```bash
+git add PRACTICE7_CHANGES.md
+```
+
+Then review:
+
+```bash
+git diff --cached --check
+git diff --cached --stat
+git status --short
+```
+
+**Bottom line:** the large file count is expected because each test has a source file and an expected-output file. The important issue is updating the staged changes before committing—not removing the new tests.
+
+================================================================================
+USER [message 340]
+================================================================================
+
+write command to delete them<br /><code>PRACTICE7_CHANGES.md</code>OptionalExplanation of the changes<code>tests/manual/member_decl.txt</code>OptionalOur earlier scratch test<code>practice7-completion.patch</code>Not needed for submissionAlternate way to apply the same changes<code>task3-full.patch</code>Not needed for Practice 7Older patch already in your project<code>output.ll</code>Keep locally for demonstrationGenerated LLVM, not source code
+
+================================================================================
+ASSISTANT [message 342]
+================================================================================
+
+Run from the project root:
+
+```bash
+rm -f PRACTICE7_CHANGES.md \
+      tests/manual/member_decl.txt \
+      practice7-completion.patch \
+      task3-full.patch \
+      output.ll
+```
+
+Stage the deletions of any tracked or previously staged files:
+
+```bash
+git add -u
+```
+
+`output.ll` will be recreated next time you compile.
+
+================================================================================
+USER [message 345]
+================================================================================
+
+ubuntu@noble3:\~/languages-compilers-design/project1\$ python3 [check.py](http://check.py/)<br />bash run\_tests.sh<br />RESULT   KIND     TEST<br />------------------------------------------------------------------------<br />PASS     valid    tests/ok/assignment\_both\_arms.txt<br />PASS     valid    tests/ok/bool\_compare.txt<br />PASS     valid    tests/ok/bool\_exit.txt<br />PASS     valid    tests/ok/exit\_in\_else.txt<br />PASS     valid    tests/ok/field\_chain.txt<br />PASS     valid    tests/ok/field\_write.txt<br />PASS     valid    tests/ok/i32\_to\_i64\_param.txt<br />PASS     valid    tests/ok/i64\_constant.txt<br />PASS     valid    tests/ok/i64\_widen.txt<br />PASS     valid    tests/ok/if\_else\_assignment.txt<br />PASS     valid    tests/ok/if\_nested.txt<br />PASS     valid    tests/ok/if\_without\_else.txt<br />PASS     valid    tests/ok/integer\_compare.txt<br />PASS     valid    tests/ok/member\_execution.txt<br />PASS     valid    tests/ok/mixed\_arithmetic.txt<br />PASS     valid    tests/ok/nested\_calls.txt<br />PASS     valid    tests/ok/nested\_init.txt<br />PASS     valid    tests/ok/nested\_pair.txt<br />PASS     valid    tests/ok/not\_condition.txt<br />PASS     valid    tests/ok/param\_copy.txt<br />PASS     valid    tests/ok/pr7\_bonus\_example.txt<br />PASS     valid    tests/ok/pr7\_bonus\_once.txt<br />PASS     valid    tests/ok/pr7\_member\_cycle.txt<br />PASS     valid    tests/ok/pr7\_member\_hides\_global.txt<br />PASS     valid    tests/ok/pr7\_member\_local\_mutation.txt<br />PASS     valid    tests/ok/pr7\_member\_nested\_mutation.txt<br />PASS     valid    tests/ok/pr7\_member\_read.txt<br />PASS     valid    tests/ok/pr7\_member\_shadow.txt<br />PASS     valid    tests/ok/pr7\_member\_two\_args.txt<br />PASS     valid    tests/ok/pr7\_method\_name\_collision.txt<br />PASS     valid    tests/ok/pr7\_print\_all.txt<br />PASS     valid    tests/ok/pr7\_print\_control\_flow.txt<br />PASS     valid    tests/ok/pr7\_print\_literals.txt<br />PASS     valid    tests/ok/pr7\_print\_struct\_returns.txt<br />PASS     valid    tests/ok/pr7\_read\_exit.txt<br />PASS     valid    tests/ok/pr7\_read\_function.txt<br />PASS     valid    tests/ok/pr7\_read\_loop.txt<br />PASS     valid    tests/ok/pr7\_read\_sum.txt<br />PASS     valid    tests/ok/pr7\_same\_method\_name.txt<br />PASS     valid    tests/ok/pr7\_task1.txt<br />PASS     valid    tests/ok/pr7\_while\_exit.txt<br />PASS     valid    tests/ok/precedence.txt<br />PASS     valid    tests/ok/scope\_shadow\_type.txt<br />PASS     valid    tests/ok/struct\_basic.txt<br />PASS     valid    tests/ok/struct\_param.txt<br />PASS     valid    tests/ok/struct\_result.txt<br />PASS     valid    tests/ok/task1.txt<br />PASS     valid    tests/ok/task3\_example.txt<br />PASS     invalid  tests/err/bool\_arithmetic.txt<br />PASS     invalid  tests/err/condition\_not\_bool.txt<br />PASS     invalid  tests/err/const\_assignment.txt<br />PASS     invalid  tests/err/constant\_i32\_overflow.txt<br />PASS     invalid  tests/err/constant\_i64\_overflow.txt<br />PASS     invalid  tests/err/duplicate\_in\_block.txt<br />PASS     invalid  tests/err/else\_without\_if.txt<br />PASS     invalid  tests/err/empty\_block.txt<br />PASS     invalid  tests/err/field\_const\_middle.txt<br />PASS     invalid  tests/err/field\_const\_write.txt<br />PASS     invalid  tests/err/field\_unknown.txt<br />PASS     invalid  tests/err/fn\_after\_statement.txt<br />PASS     invalid  tests/err/fn\_assign\_param.txt<br />PASS     invalid  tests/err/fn\_exit\_wrong\_type.txt<br />PASS     invalid  tests/err/fn\_top\_level\_var.txt<br />PASS     invalid  tests/err/fn\_unknown.txt<br />PASS     invalid  tests/err/fn\_wrong\_arg\_count.txt<br />PASS     invalid  tests/err/fn\_wrong\_arg\_type.txt<br />PASS     invalid  tests/err/if\_brace\_same\_line.txt<br />PASS     invalid  tests/err/integer\_to\_bool.txt<br />PASS     invalid  tests/err/mixed\_comparison.txt<br />PASS     invalid  tests/err/narrowing\_assignment.txt<br />PASS     invalid  tests/err/narrowing\_initialiser.txt<br />PASS     invalid  tests/err/nested\_builtin.txt<br />PASS     invalid  tests/err/nested\_wrong\_count.txt<br />PASS     invalid  tests/err/not\_integer.txt<br />PASS     invalid  tests/err/out\_of\_scope.txt<br />PASS     invalid  tests/err/pr7\_bonus\_assign\_temporary.txt<br />PASS     invalid  tests/err/pr7\_bonus\_primitive\_field.txt<br />PASS     invalid  tests/err/pr7\_bonus\_primitive\_method.txt<br />PASS     invalid  tests/err/pr7\_cycle\_const.txt<br />PASS     invalid  tests/err/pr7\_duplicate\_method.txt<br />PASS     invalid  tests/err/pr7\_field\_after\_method.txt<br />PASS     invalid  tests/err/pr7\_field\_method\_same\_name.txt<br />PASS     invalid  tests/err/pr7\_method\_before\_field.txt<br />PASS     invalid  tests/err/pr7\_method\_const\_field.txt<br />PASS     invalid  tests/err/pr7\_method\_on\_integer.txt<br />PASS     invalid  tests/err/pr7\_method\_on\_type.txt<br />PASS     invalid  tests/err/pr7\_method\_top\_level\_variable.txt<br />PASS     invalid  tests/err/pr7\_method\_unknown\_variable.txt<br />PASS     invalid  tests/err/pr7\_method\_wrong\_count.txt<br />PASS     invalid  tests/err/pr7\_method\_wrong\_exit.txt<br />PASS     invalid  tests/err/pr7\_method\_wrong\_type.txt<br />PASS     invalid  tests/err/pr7\_mutating\_const.txt<br />PASS     invalid  tests/err/pr7\_mutating\_const\_field.txt<br />PASS     invalid  tests/err/pr7\_mutating\_const\_root.txt<br />PASS     invalid  tests/err/pr7\_nested\_indirect\_const.txt<br />PASS     invalid  tests/err/pr7\_primitive\_chain.txt<br />PASS     invalid  tests/err/pr7\_print\_empty.txt<br />PASS     invalid  tests/err/pr7\_print\_field.txt<br />PASS     invalid  tests/err/pr7\_print\_function.txt<br />PASS     invalid  tests/err/pr7\_print\_member.txt<br />PASS     invalid  tests/err/pr7\_print\_method.txt<br />PASS     invalid  tests/err/pr7\_print\_parameter.txt<br />PASS     invalid  tests/err/pr7\_print\_two.txt<br />PASS     invalid  tests/err/pr7\_print\_value.txt<br />PASS     invalid  tests/err/pr7\_print\_variable.txt<br />PASS     invalid  tests/err/pr7\_read\_argument.txt<br />PASS     invalid  tests/err/pr7\_read\_field.txt<br />PASS     invalid  tests/err/pr7\_read\_function.txt<br />PASS     invalid  tests/err/pr7\_read\_method.txt<br />PASS     invalid  tests/err/pr7\_read\_parameter.txt<br />PASS     invalid  tests/err/pr7\_read\_variable.txt<br />PASS     invalid  tests/err/pr7\_string\_argument.txt<br />PASS     invalid  tests/err/pr7\_string\_outside.txt<br />PASS     invalid  tests/err/pr7\_string\_unterminated.txt<br />PASS     invalid  tests/err/pr7\_string\_unterminated\_eof.txt<br />PASS     invalid  tests/err/pr7\_unknown\_method.txt<br />PASS     invalid  tests/err/pr7\_while\_condition.txt<br />PASS     invalid  tests/err/shadow\_type\_assignment.txt<br />PASS     invalid  tests/err/single\_equals.txt<br />PASS     invalid  tests/err/statement\_after\_block\_exit.txt<br />PASS     invalid  tests/err/struct\_after\_fn.txt<br />PASS     invalid  tests/err/struct\_after\_statement.txt<br />PASS     invalid  tests/err/struct\_builtin\_too\_many\_values.txt<br />PASS     invalid  tests/err/struct\_copy\_type\_mismatch.txt<br />PASS     invalid  tests/err/struct\_duplicate.txt<br />PASS     invalid  tests/err/struct\_duplicate\_field.txt<br />PASS     invalid  tests/err/struct\_field\_type\_mismatch.txt<br />PASS     invalid  tests/err/struct\_inside\_if.txt<br />PASS     invalid  tests/err/struct\_nested\_field\_mismatch.txt<br />PASS     invalid  tests/err/struct\_no\_fields.txt<br />PASS     invalid  tests/err/struct\_self\_reference.txt<br />PASS     invalid  tests/err/struct\_unknown\_field\_type.txt<br />PASS     invalid  tests/err/struct\_unknown\_object\_type.txt<br />PASS     invalid  tests/err/struct\_wrong\_value\_count.txt<br />PASS     invalid  tests/err/unclosed\_block.txt<br />PASS     invalid  tests/err/use\_before\_declaration.txt<br /><br />Passed: 136<br />Failed: 0<br />Running valid tests...<br />PASS: tests/ok/assignment\_both\_arms.txt<br />PASS: tests/ok/bool\_compare.txt<br />PASS: tests/ok/bool\_exit.txt<br />PASS: tests/ok/exit\_in\_else.txt<br />PASS: tests/ok/field\_chain.txt<br />PASS: tests/ok/field\_write.txt<br />PASS: tests/ok/i32\_to\_i64\_param.txt<br />PASS: tests/ok/i64\_constant.txt<br />PASS: tests/ok/i64\_widen.txt<br />PASS: tests/ok/if\_else\_assignment.txt<br />PASS: tests/ok/if\_nested.txt<br />PASS: tests/ok/if\_without\_else.txt<br />PASS: tests/ok/integer\_compare.txt<br />PASS: tests/ok/member\_execution.txt<br />PASS: tests/ok/mixed\_arithmetic.txt<br />PASS: tests/ok/nested\_calls.txt<br />PASS: tests/ok/nested\_init.txt<br />PASS: tests/ok/nested\_pair.txt<br />PASS: tests/ok/not\_condition.txt<br />PASS: tests/ok/param\_copy.txt<br />PASS: tests/ok/pr7\_bonus\_example.txt<br />PASS: tests/ok/pr7\_bonus\_once.txt<br />PASS: tests/ok/pr7\_member\_cycle.txt<br />PASS: tests/ok/pr7\_member\_hides\_global.txt<br />PASS: tests/ok/pr7\_member\_local\_mutation.txt<br />PASS: tests/ok/pr7\_member\_nested\_mutation.txt<br />PASS: tests/ok/pr7\_member\_read.txt<br />PASS: tests/ok/pr7\_member\_shadow.txt<br />PASS: tests/ok/pr7\_member\_two\_args.txt<br />PASS: tests/ok/pr7\_method\_name\_collision.txt<br />PASS: tests/ok/pr7\_print\_all.txt<br />PASS: tests/ok/pr7\_print\_control\_flow.txt<br />PASS: tests/ok/pr7\_print\_literals.txt<br />PASS: tests/ok/pr7\_print\_struct\_returns.txt<br />PASS: tests/ok/pr7\_read\_exit.txt<br />PASS: tests/ok/pr7\_read\_function.txt<br />PASS: tests/ok/pr7\_read\_loop.txt<br />PASS: tests/ok/pr7\_read\_sum.txt<br />PASS: tests/ok/pr7\_same\_method\_name.txt<br />PASS: tests/ok/pr7\_task1.txt<br />PASS: tests/ok/pr7\_while\_exit.txt<br />PASS: tests/ok/precedence.txt<br />PASS: tests/ok/scope\_shadow\_type.txt<br />PASS: tests/ok/struct\_basic.txt<br />PASS: tests/ok/struct\_param.txt<br />PASS: tests/ok/struct\_result.txt<br />PASS: tests/ok/task1.txt<br />PASS: tests/ok/task3\_example.txt<br /><br />Running invalid tests...<br />PASS: tests/err/bool\_arithmetic.txt<br />PASS: tests/err/condition\_not\_bool.txt<br />PASS: tests/err/const\_assignment.txt<br />PASS: tests/err/constant\_i32\_overflow.txt<br />PASS: tests/err/constant\_i64\_overflow.txt<br />PASS: tests/err/duplicate\_in\_block.txt<br />PASS: tests/err/else\_without\_if.txt<br />PASS: tests/err/empty\_block.txt<br />PASS: tests/err/field\_const\_middle.txt<br />PASS: tests/err/field\_const\_write.txt<br />PASS: tests/err/field\_unknown.txt<br />PASS: tests/err/fn\_after\_statement.txt<br />PASS: tests/err/fn\_assign\_param.txt<br />PASS: tests/err/fn\_exit\_wrong\_type.txt<br />PASS: tests/err/fn\_top\_level\_var.txt<br />PASS: tests/err/fn\_unknown.txt<br />PASS: tests/err/fn\_wrong\_arg\_count.txt<br />PASS: tests/err/fn\_wrong\_arg\_type.txt<br />PASS: tests/err/if\_brace\_same\_line.txt<br />PASS: tests/err/integer\_to\_bool.txt<br />PASS: tests/err/mixed\_comparison.txt<br />PASS: tests/err/narrowing\_assignment.txt<br />PASS: tests/err/narrowing\_initialiser.txt<br />PASS: tests/err/nested\_builtin.txt<br />PASS: tests/err/nested\_wrong\_count.txt<br />PASS: tests/err/not\_integer.txt<br />PASS: tests/err/out\_of\_scope.txt<br />PASS: tests/err/pr7\_bonus\_assign\_temporary.txt<br />PASS: tests/err/pr7\_bonus\_primitive\_field.txt<br />PASS: tests/err/pr7\_bonus\_primitive\_method.txt<br />PASS: tests/err/pr7\_cycle\_const.txt<br />PASS: tests/err/pr7\_duplicate\_method.txt<br />PASS: tests/err/pr7\_field\_after\_method.txt<br />PASS: tests/err/pr7\_field\_method\_same\_name.txt<br />PASS: tests/err/pr7\_method\_before\_field.txt<br />PASS: tests/err/pr7\_method\_const\_field.txt<br />PASS: tests/err/pr7\_method\_on\_integer.txt<br />PASS: tests/err/pr7\_method\_on\_type.txt<br />PASS: tests/err/pr7\_method\_top\_level\_variable.txt<br />PASS: tests/err/pr7\_method\_unknown\_variable.txt<br />PASS: tests/err/pr7\_method\_wrong\_count.txt<br />PASS: tests/err/pr7\_method\_wrong\_exit.txt<br />PASS: tests/err/pr7\_method\_wrong\_type.txt<br />PASS: tests/err/pr7\_mutating\_const.txt<br />PASS: tests/err/pr7\_mutating\_const\_field.txt<br />PASS: tests/err/pr7\_mutating\_const\_root.txt<br />PASS: tests/err/pr7\_nested\_indirect\_const.txt<br />PASS: tests/err/pr7\_primitive\_chain.txt<br />PASS: tests/err/pr7\_print\_empty.txt<br />PASS: tests/err/pr7\_print\_field.txt<br />PASS: tests/err/pr7\_print\_function.txt<br />PASS: tests/err/pr7\_print\_member.txt<br />PASS: tests/err/pr7\_print\_method.txt<br />PASS: tests/err/pr7\_print\_parameter.txt<br />PASS: tests/err/pr7\_print\_two.txt<br />PASS: tests/err/pr7\_print\_value.txt<br />PASS: tests/err/pr7\_print\_variable.txt<br />PASS: tests/err/pr7\_read\_argument.txt<br />PASS: tests/err/pr7\_read\_field.txt<br />PASS: tests/err/pr7\_read\_function.txt<br />PASS: tests/err/pr7\_read\_method.txt<br />PASS: tests/err/pr7\_read\_parameter.txt<br />PASS: tests/err/pr7\_read\_variable.txt<br />PASS: tests/err/pr7\_string\_argument.txt<br />PASS: tests/err/pr7\_string\_outside.txt<br />PASS: tests/err/pr7\_string\_unterminated.txt<br />PASS: tests/err/pr7\_string\_unterminated\_eof.txt<br />PASS: tests/err/pr7\_unknown\_method.txt<br />PASS: tests/err/pr7\_while\_condition.txt<br />PASS: tests/err/shadow\_type\_assignment.txt<br />PASS: tests/err/single\_equals.txt<br />PASS: tests/err/statement\_after\_block\_exit.txt<br />PASS: tests/err/struct\_after\_fn.txt<br />PASS: tests/err/struct\_after\_statement.txt<br />PASS: tests/err/struct\_builtin\_too\_many\_values.txt<br />PASS: tests/err/struct\_copy\_type\_mismatch.txt<br />PASS: tests/err/struct\_duplicate.txt<br />PASS: tests/err/struct\_duplicate\_field.txt<br />PASS: tests/err/struct\_field\_type\_mismatch.txt<br />PASS: tests/err/struct\_inside\_if.txt<br />PASS: tests/err/struct\_nested\_field\_mismatch.txt<br />PASS: tests/err/struct\_no\_fields.txt<br />PASS: tests/err/struct\_self\_reference.txt<br />PASS: tests/err/struct\_unknown\_field\_type.txt<br />PASS: tests/err/struct\_unknown\_object\_type.txt<br />PASS: tests/err/struct\_wrong\_value\_count.txt<br />PASS: tests/err/unclosed\_block.txt<br />PASS: tests/err/use\_before\_declaration.txt<br /><br />Passed: 136<br />Failed: 0
+
+================================================================================
+ASSISTANT [message 347]
+================================================================================
+
+**Both runners pass locally: 136 passed, 0 failed.** Deleting those extra files did not break the tests.
+
+Before committing:
+
+1. Remove the reference to the deleted `PRACTICE7_CHANGES.md` from the end of `README.md`.
+2. Add your local verification to `ai_usage.txt`:
+   ```txt
+   Local verification: python3 check.py and bash run_tests.sh
+   both reported 136 passed, 0 failed.
+   ```
+3. Stage and review:
+
+   ```bash
+   git add src/ tests/ok/ tests/err/
+   git add check.py run_tests.sh grammar.ebnf README.md ai_usage.txt
+   git add -u
+
+   git diff --cached --check
+   git diff --cached --stat
+   git status --short
+   ```
+
+If the review looks correct, commit and push:
+
+```bash
+git commit -m "Complete practice 7: member functions, IO, tests and chaining"
+git push -u origin practice-7
+```
+
+Then open the PR **from `practice-7` into `main`**, with **`vovaskochko`** as reviewer.
+
+================================================================================
+USER [message 350]
+================================================================================
+
+generate ai\_usage.txt where u log our conversation word for word
+
+================================================================================
+END OF CONVERSATION TRANSCRIPT
+================================================================================
+
+APPENDIX — pasted-text.txt attached to message 319
+The following attachment bytes are copied verbatim.
+
+ubuntu@noble3:~/languages-compilers-design/project1$ git add .
+ubuntu@noble3:~/languages-compilers-design/project1$ git status
+On branch practice-7
+Changes to be committed:
+  (use "git restore --staged <file>..." to unstage)
+        modified:   ai_usage.txt
+        modified:   src/compiler.py
+        new file:   tests/manual/member_decl.txt
+        new file:   tests/ok/member_execution.expected
+        new file:   tests/ok/member_execution.txt
+        new file:   tests/ok/pr7_task1.expected
+        new file:   tests/ok/pr7_task1.txt
+
+ubuntu@noble3:~/languages-compilers-design/project1$ git diff
+ubuntu@noble3:~/languages-compilers-design/project1$ git status
+On branch practice-7
+Changes to be committed:
+  (use "git restore --staged <file>..." to unstage)
+        modified:   ai_usage.txt
+        modified:   src/compiler.py
+        new file:   tests/manual/member_decl.txt
+        new file:   tests/ok/member_execution.expected
+        new file:   tests/ok/member_execution.txt
+        new file:   tests/ok/pr7_task1.expected
+        new file:   tests/ok/pr7_task1.txt
+
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+        modified:   README.md
+        modified:   ai_usage.txt
+        modified:   check.py
+        modified:   grammar.ebnf
+        modified:   run_tests.sh
+        modified:   src/compiler.py
+        modified:   src/lexer.py
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+        PRACTICE7_CHANGES.md
+        tests/err/pr7_bonus_assign_temporary.expected
+        tests/err/pr7_bonus_assign_temporary.txt
+        tests/err/pr7_bonus_primitive_field.expected
+        tests/err/pr7_bonus_primitive_field.txt
+        tests/err/pr7_bonus_primitive_method.expected
+        tests/err/pr7_bonus_primitive_method.txt
+        tests/err/pr7_cycle_const.expected
+        tests/err/pr7_cycle_const.txt
+        tests/err/pr7_duplicate_method.expected
+        tests/err/pr7_duplicate_method.txt
+        tests/err/pr7_field_after_method.expected
+        tests/err/pr7_field_after_method.txt
+        tests/err/pr7_field_method_same_name.expected
+        tests/err/pr7_field_method_same_name.txt
+        tests/err/pr7_method_before_field.expected
+        tests/err/pr7_method_before_field.txt
+        tests/err/pr7_method_const_field.expected
+        tests/err/pr7_method_const_field.txt
+        tests/err/pr7_method_on_integer.expected
+        tests/err/pr7_method_on_integer.txt
+        tests/err/pr7_method_on_type.expected
+        tests/err/pr7_method_on_type.txt
+        tests/err/pr7_method_top_level_variable.expected
+        tests/err/pr7_method_top_level_variable.txt
+        tests/err/pr7_method_unknown_variable.expected
+        tests/err/pr7_method_unknown_variable.txt
+        tests/err/pr7_method_wrong_count.expected
+        tests/err/pr7_method_wrong_count.txt
+        tests/err/pr7_method_wrong_exit.expected
+        tests/err/pr7_method_wrong_exit.txt
+        tests/err/pr7_method_wrong_type.expected
+        tests/err/pr7_method_wrong_type.txt
+        tests/err/pr7_mutating_const.expected
+        tests/err/pr7_mutating_const.txt
+        tests/err/pr7_mutating_const_field.expected
+        tests/err/pr7_mutating_const_field.txt
+        tests/err/pr7_mutating_const_root.expected
+        tests/err/pr7_mutating_const_root.txt
+        tests/err/pr7_nested_indirect_const.expected
+        tests/err/pr7_nested_indirect_const.txt
+        tests/err/pr7_primitive_chain.expected
+        tests/err/pr7_primitive_chain.txt
+        tests/err/pr7_print_empty.expected
+        tests/err/pr7_print_empty.txt
+        tests/err/pr7_print_field.expected
+        tests/err/pr7_print_field.txt
+        tests/err/pr7_print_function.expected
+        tests/err/pr7_print_function.txt
+        tests/err/pr7_print_member.expected
+        tests/err/pr7_print_member.txt
+        tests/err/pr7_print_method.expected
+        tests/err/pr7_print_method.txt
+        tests/err/pr7_print_parameter.expected
+        tests/err/pr7_print_parameter.txt
+        tests/err/pr7_print_two.expected
+        tests/err/pr7_print_two.txt
+        tests/err/pr7_print_value.expected
+        tests/err/pr7_print_value.txt
+        tests/err/pr7_print_variable.expected
+        tests/err/pr7_print_variable.txt
+        tests/err/pr7_read_argument.expected
+        tests/err/pr7_read_argument.txt
+        tests/err/pr7_read_field.expected
+        tests/err/pr7_read_field.txt
+        tests/err/pr7_read_function.expected
+        tests/err/pr7_read_function.txt
+        tests/err/pr7_read_method.expected
+        tests/err/pr7_read_method.txt
+        tests/err/pr7_read_parameter.expected
+        tests/err/pr7_read_parameter.txt
+        tests/err/pr7_read_variable.expected
+        tests/err/pr7_read_variable.txt
+        tests/err/pr7_string_argument.expected
+        tests/err/pr7_string_argument.txt
+        tests/err/pr7_string_outside.expected
+        tests/err/pr7_string_outside.txt
+        tests/err/pr7_string_unterminated.expected
+        tests/err/pr7_string_unterminated.txt
+        tests/err/pr7_string_unterminated_eof.expected
+        tests/err/pr7_string_unterminated_eof.txt
+        tests/err/pr7_unknown_method.expected
+        tests/err/pr7_unknown_method.txt
+        tests/err/pr7_while_condition.expected
+        tests/err/pr7_while_condition.txt
+        tests/ok/pr7_bonus_example.expected
+        tests/ok/pr7_bonus_example.txt
+        tests/ok/pr7_bonus_once.expected
+        tests/ok/pr7_bonus_once.txt
+        tests/ok/pr7_member_cycle.expected
+        tests/ok/pr7_member_cycle.txt
+        tests/ok/pr7_member_hides_global.expected
+        tests/ok/pr7_member_hides_global.txt
+        tests/ok/pr7_member_local_mutation.expected
+        tests/ok/pr7_member_local_mutation.txt
+        tests/ok/pr7_member_nested_mutation.expected
+        tests/ok/pr7_member_nested_mutation.txt
+        tests/ok/pr7_member_read.expected
+        tests/ok/pr7_member_read.in
+        tests/ok/pr7_member_read.txt
+        tests/ok/pr7_member_shadow.expected
+        tests/ok/pr7_member_shadow.txt
+        tests/ok/pr7_member_two_args.expected
+        tests/ok/pr7_member_two_args.txt
+        tests/ok/pr7_method_name_collision.expected
+        tests/ok/pr7_method_name_collision.txt
+        tests/ok/pr7_print_all.expected
+        tests/ok/pr7_print_all.in
+        tests/ok/pr7_print_all.txt
+        tests/ok/pr7_print_control_flow.expected
+        tests/ok/pr7_print_control_flow.txt
+        tests/ok/pr7_print_literals.expected
+        tests/ok/pr7_print_literals.txt
+        tests/ok/pr7_print_struct_returns.expected
+        tests/ok/pr7_print_struct_returns.txt
+        tests/ok/pr7_read_exit.expected
+        tests/ok/pr7_read_exit.in
+        tests/ok/pr7_read_exit.txt
+        tests/ok/pr7_read_function.expected
+        tests/ok/pr7_read_function.in
+        tests/ok/pr7_read_function.txt
+        tests/ok/pr7_read_loop.expected
+        tests/ok/pr7_read_loop.in
+        tests/ok/pr7_read_loop.txt
+        tests/ok/pr7_read_sum.expected
+        tests/ok/pr7_read_sum.in
+        tests/ok/pr7_read_sum.txt
+        tests/ok/pr7_same_method_name.expected
+        tests/ok/pr7_same_method_name.txt
+        tests/ok/pr7_while_exit.expected
+        tests/ok/pr7_while_exit.txt
+
+ubuntu@noble3:~/languages-compilers-design/project1$ git diff
+diff --git a/README.md b/README.md
+index aa9f29f..c3b5dae 100644
+--- a/README.md
++++ b/README.md
+@@ -1,6 +1,6 @@
+-# Languages and Compilers Design — Practice 5
++# Languages and Compilers Design — Practice 7
+
+-A compiler with if/else, boolean negation, nested scopes, and LLVM control flow.
++A compiler with structs, member functions, mutation checking, input/output, and LLVM control flow.
+
+ ## Pipeline
+
+@@ -72,12 +72,61 @@ Each test has a matching .expected file.
+ Comparisons normalize CRLF/LF line endings.
+ Failed compilation must not leave an output IR file.
+
+-The current suite contains 15 valid and 20 invalid tests.
+-Practice 5 adds 7 valid and 10 invalid tests.
++The current suite contains 48 valid and 88 invalid tests (136 total).
+ AST dumps for the new valid programs are saved beside their sources.
+
+ Implementation lives in src/.
+ Root-level compiler.py and lexer.py preserve compatibility with earlier commands
+ and manual test imports.
+
+-The optional while extension is not implemented.
++The while extension is implemented, including print and read inside its body.
++
++
++## Practice 7
++
++The required member-function, I/O, and testing tasks are implemented.
++The optional call-in-the-middle-of-a-chain task is also implemented.
++
++- Structs contain fields first, then methods. Methods have their own per-struct namespace.
++- Parameters and local variables hide object fields. Methods do not see top-level variables.
++- An unqualified call inside a method prefers a method on the same object, then a global function.
++- Mutation flags propagate through calls until a fixed point, including cycles.
++- A mutating call requires a mutable receiver and every field along its receiver chain.
++- LLVM methods receive the original object's address as a hidden first argument.
++- read() returns i32 and takes no arguments. read and print are reserved names.
++- print accepts i32, i64, bool, a literal, or a struct, and emits one trailing newline.
++- Literal backslashes are not escapes. Percent signs are printed as text.
++- Struct printing recursively follows the declared fields, including returned structs.
++- Calls returning structs can be followed by fields and member calls.
++- A call result is a temporary copy; mutating it does not change the original object.
++- Call results cannot be assignment targets.
++- Both runners use a matching NAME.in file when present and compare the whole stdout.
++
++### Demonstration commands
++
++```bash
++python3 src/compiler.py --ast tests/ok/pr7_task1.txt
++python3 src/compiler.py tests/ok/pr7_task1.txt output.ll
++lli output.ll
++# Program exit with result 83
++
++grep -n -A 25 'define.*Point_shift' output.ll
++
++python3 src/compiler.py tests/ok/pr7_print_all.txt output.ll
++lli output.ll < tests/ok/pr7_print_all.in
++
++python3 src/compiler.py tests/err/pr7_field_after_method.txt output.ll
++python3 src/compiler.py tests/err/pr7_mutating_const.txt output.ll
++# Both commands must fail with line:column diagnostics.
++
++python3 src/compiler.py tests/ok/pr7_bonus_example.txt output.ll
++lli output.ll
++# Program exit with result 46
++
++python3 check.py
++bash run_tests.sh
++# Both: Passed: 136, Failed: 0
++```
++
++On a new machine, install llvmlite for the Python interpreter being used,
++and make sure LLVM's lli is on PATH. See PRACTICE7_CHANGES.md for the change guide.
+diff --git a/ai_usage.txt b/ai_usage.txt
+index e69de29..79252f4 100644
+--- a/ai_usage.txt
++++ b/ai_usage.txt
+@@ -0,0 +1,43 @@
++Practice 7 — AI usage
++
++Tools used:
++- Notion AI in this chat, first for step-by-step guidance and then for direct code edits.
++- The assignment supplied through the Notion page was read as the specification.
++- Python scripts were used to inspect the uploaded project and apply targeted edits.
++- llvmlite.ir generated LLVM; llvmlite.binding parsed and verified the generated modules.
++- LLVM lli ran the compiled programs. Both project test runners were executed.
++- llvmlite and LLVM were installed in the assistant's temporary environment for verification.
++
++Prompts / requests:
++- "read task, i also attached state of files now, help me with understan\ing and doing the task"
++- Repeated requests to continue the implementation and reports of parser/type-checking results.
++- "can u complete other tasks" together with the updated project1.zip.
++
++AI-generated material used in this project:
++- Earlier guided changes: member AST nodes, parsing, per-struct method registration,
++  name lookup, direct and transitive mutation analysis, const-chain checks, and LLVM methods.
++- This completion: read(), string lexing, print statements for all required types,
++  while support, .in support in both test runners, temporary-result chains, and diagnostics.
++- New Practice 7 tests, expected outputs, input files, updated grammar and documentation.
++
++What was changed rather than replacing the project wholesale:
++- The uploaded lexer/parser/visitor/code-generator structure and existing tests were kept.
++- Existing expression and declaration checks were reused for method calls and built-ins.
++- Struct copying was extended to member-call and field-access results.
++- Invalid primitive field chains now produce a compiler diagnostic instead of a traceback.
++- A separate LLVM type context prevents repeated in-process compilations from sharing types.
++
++Verification performed by the AI assistant:
++- check.py: 136 passed, 0 failed.
++- run_tests.sh: 136 passed, 0 failed.
++- All 48 valid-test modules were parsed and verified through llvmlite.binding.
++- Every alloca in every generated function was checked for entry-first placement.
++- The required member example returned 83; the optional chain example returned 46.
++- Error fixtures were checked for a matching diagnostic category, line:column,
++  nonzero compiler exit, and removal of a stale output file before saving them.
++
++Review status:
++The completion code, tests, and documents in this delivery are AI-authored.
++These test results describe the assistant's environment, not an unobserved local run.
++No git push or pull request was performed. Any later human edits and local verification
++should be added to this file before submission.
+diff --git a/check.py b/check.py
+index 8744060..94b0d6c 100644
+--- a/check.py
++++ b/check.py
+@@ -41,7 +41,10 @@ def check_test(source, valid, workdir):
+
+         executed = subprocess.run(
+             ["lli", str(output)],
++            input=source.with_suffix(".in").read_bytes()
++            if source.with_suffix(".in").exists() else b"",
+             capture_output=True,
++            timeout=10,
+         )
+
+         if executed.returncode != 0:
+@@ -85,7 +88,10 @@ def main():
+                 failed += 1
+
+             for source in sources:
+-                success, detail = check_test(source, valid, workdir)
++                try:
++                    success, detail = check_test(source, valid, workdir)
++                except subprocess.TimeoutExpired:
++                    success, detail = False, "execution timed out after 10 seconds"
+
+                 result = "PASS" if success else "FAIL"
+                 kind = "valid" if valid else "invalid"
+diff --git a/grammar.ebnf b/grammar.ebnf
+index cb117bc..cc21056 100644
+--- a/grammar.ebnf
++++ b/grammar.ebnf
+@@ -1,17 +1,25 @@
+-program ::= { statement } exit
+-statement ::= ( declaration | assignment ) NL | if
+-declaration ::= type [ "mut" ] ident "{" expression "}"
+-type ::= "i32" | "i64" | "bool"
+-assignment ::= ident ":=" expression
++program ::= { struct } { fn } { statement } exit
++struct ::= "struct" ident NL "{" NL field_decl { field_decl } { fn } "}" NL
++field_decl ::= type [ "mut" ] ident NL
++fn ::= "fn" ident ":=" "(" [ param { "," param } ] ")" "->" type NL block
++param ::= type ident
++type ::= "i32" | "i64" | "bool" | ident
++statement ::= ( declaration | assignment | print ) NL | if | while
++declaration ::= type [ "mut" ] ident "{" init_value { "," init_value } "}"
++init_value ::= expression | "{" init_value { "," init_value } "}"
++assignment ::= ident { "." ident } ":=" expression
+ exit ::= "exit" factor [ NL ]
+-
+ if ::= "if" expression NL block [ "else" NL block ]
++while ::= "while" expression NL block
+ block ::= "{" NL { statement } [ exit ] "}" NL
+-
++print ::= "print" "(" ( string | expression ) ")"
++string ::= '"' { any byte except '"' and newline } '"'
+ expression ::= arithmetic [ ( "==" | "!=" ) arithmetic ]
+ arithmetic ::= term { ( "+" | "-" ) term }
+ term ::= factor { "*" factor }
+-factor ::= number | "true" | "false" | ident | "!" factor
++factor ::= number | "true" | "false" | "!" factor | "read" "(" ")"
++         | ident [ arguments ] { "." ident [ arguments ] }
++arguments ::= "(" [ expression { "," expression } ] ")"
+
+ # NL means the end of a source line.
+ # Blank lines are ignored.
+@@ -20,3 +28,9 @@ factor ::= number | "true" | "false" | ident | "!" factor
+ # No statement may follow exit within the same block or program.
+ # "{", "}", and "else" must stand alone on their lines.
+ # Parentheses and unary minus are not supported.
++# Parentheses above delimit function calls, not grouped arithmetic.
++# A member function follows at least one field; fields cannot follow methods.
++# read and print are reserved. A string is allowed only as print's direct argument.
++# String literals do not interpret escape sequences.
++# A dot after a call requires a struct result (the optional Practice 7 extension).
++# Call results are temporary copies and cannot be assigned to.
+diff --git a/run_tests.sh b/run_tests.sh
+index d89f67b..ddbcbc1 100755
+--- a/run_tests.sh
++++ b/run_tests.sh
+@@ -12,7 +12,9 @@ for source in tests/ok/*.txt; do
+     expected="${source%.txt}.expected"
+     rm -f "$ir_file" "$actual_file"
+     if python3 src/compiler.py "$source" "$ir_file" 2>"$actual_file"; then
+-        if lli "$ir_file" >"$actual_file" && diff -u "$expected" "$actual_file"; then
++        input="${source%.txt}.in"
++        if ! test -f "$input"; then input=/dev/null; fi
++        if lli "$ir_file" <"$input" >"$actual_file" && diff -u "$expected" "$actual_file"; then
+             echo "PASS: $source"; passed=$((passed + 1))
+         else
+             echo "FAIL: $source"; failed=$((failed + 1))
+diff --git a/src/compiler.py b/src/compiler.py
+index ac52b72..2658f27 100644
+--- a/src/compiler.py
++++ b/src/compiler.py
+@@ -55,6 +55,22 @@ class IfNode(Node):
+     else_block: object = None
+
+
++@dataclass
++class WhileNode(Node):
++    condition: object
++    body: BlockNode
++
++
++@dataclass
++class PrintNode(Node):
++    value: object
++
++
++@dataclass
++class StringNode(Node):
++    value: str
++
++
+ @dataclass
+ class FieldNode(Node):
+     name: str
+@@ -162,6 +178,13 @@ class FieldAccessNode(ExprNode):
+     mut_flags: list = field(default=None, init=False, repr=False)
+
+
++@dataclass
++class ResultFieldNode(ExprNode):
++    receiver: object
++    name: str
++    index: object = field(default=None, init=False, repr=False)
++
++
+ @dataclass
+ class InitListNode(ExprNode):
+     values: list
+@@ -336,6 +359,12 @@ class Parser:
+         if token.text == "if":
+             return self.parse_if()
+
++        if token.text == "while":
++            return self.parse_while()
++
++        if token.text == "print":
++            return self.parse_print()
++
+         if token.text == "struct":
+             raise CompileError(
+                 token.line,
+@@ -375,6 +404,27 @@ class Parser:
+             f"cannot start a statement with '{token.text}'",
+         )
+
++    def parse_print(self):
++        token = self.eat()
++        self.expect_text("(", "expected '(' after print")
++        if self.peek() is not None and self.peek().kind == "string":
++            literal = self.eat()
++            value = StringNode(literal.line, literal.column, literal.text)
++        else:
++            value = self.parse_expr()
++        self.expect_text(")", "print needs exactly one argument followed by ')'")
++        return PrintNode(token.line, token.column, value)
++
++    def parse_while(self):
++        token = self.eat()
++        condition = self.parse_expr()
++        self.expect_line_end()
++        if not self.next_line():
++            raise CompileError(token.line, token.column, "expected '{' after while")
++        self.expect_text("{", "expected '{' on its own line after while")
++        body = self.parse_block()
++        return WhileNode(token.line, token.column, condition, body)
++
+     def parse_if(self):
+         if_token = self.eat()
+         condition = self.parse_expr()
+@@ -708,13 +758,14 @@ class Parser:
+                     )
+
+                 call = self.parse_call(part)
+-                return MemberCallNode(
++                node = MemberCallNode(
+                     part.line,
+                     part.column,
+                     receiver,
+                     part.text,
+                     call.args,
+                 )
++                return self.parse_result_chain(node)
+
+             path.append((part.text, part.line, part.column))
+
+@@ -725,6 +776,18 @@ class Parser:
+             path,
+         )
+
++    def parse_result_chain(self, node):
++        while self.at("."):
++            dot = self.eat()
++            part = self.expect_kind("identifier", "expected a member name after '.'")
++            if self.at("("):
++                call = self.parse_call(part)
++                node = MemberCallNode(part.line, part.column, node, part.text, call.args)
++                node.dot_position = (dot.line, dot.column)
++            else:
++                node = ResultFieldNode(dot.line, dot.column, node, part.text)
++        return node
++
+     def parse_init_value(self):
+         if self.at("{"):
+             opening = self.eat()
+@@ -815,11 +878,18 @@ class Parser:
+         if token.kind == "number":
+             self.eat()
+             return ConstNode(token.line, token.column, int(token.text))
++        if token.text == "read":
++            self.eat()
++            return self.parse_result_chain(self.parse_call(token))
++        if token.text == "print":
++            raise CompileError(token.line, token.column, "print is a statement, not a value")
++        if token.kind == "string":
++            raise CompileError(token.line, token.column, "a string literal is allowed only in print")
+         if token.kind == "identifier":
+             self.eat()
+             following = self.peek()
+             if following is not None and following.text == "(":
+-                return self.parse_call(token)
++                return self.parse_result_chain(self.parse_call(token))
+             if following is not None and following.text == ".":
+                 return self.parse_field_access(token)
+             return VarNode(token.line, token.column, token.text)
+@@ -859,6 +929,18 @@ class AstPrinter:
+         if node.exit_node is not None:
+             self.child(node.exit_node)
+
++    def visit_while(self, node):
++        self.add("While")
++        self.child(node.condition)
++        self.child(node.body)
++
++    def visit_print(self, node):
++        self.add("Print")
++        self.child(node.value)
++
++    def visit_string(self, node):
++        self.add(f"String {node.value!r}")
++
+     def visit_if(self, node):
+         self.add("If")
+         self.child(node.condition)
+@@ -938,6 +1020,10 @@ class AstPrinter:
+         for value in node.values:
+             self.child(value)
+
++    def visit_resultfield(self, node):
++        self.add(f"ResultField {node.name}")
++        self.child(node.receiver)
++
+     def visit_membercall(self, node):
+         self.add(f"MemberCall {node.name}")
+         self.child(node.receiver)
+@@ -1087,6 +1173,12 @@ class SemanticChecker:
+             self.current_struct = saved_struct
+
+     def visit_call(self, node):
++        if node.name == "read":
++            if node.args:
++                raise CompileError(node.line, node.column, "read() takes no arguments")
++            node.type = "i32"
++            return node.type
++
+         fn = None
+         node.implicit_receiver = False
+
+@@ -1136,9 +1228,10 @@ class SemanticChecker:
+         struct_node = self.structs.get(receiver_type)
+
+         if struct_node is None:
++            line, column = getattr(node, "dot_position", (node.line, node.column))
+             raise CompileError(
+-                node.line,
+-                node.column,
++                line,
++                column,
+                 f"type '{receiver_type}' has no member functions",
+             )
+
+@@ -1157,7 +1250,7 @@ class SemanticChecker:
+         if (
+             self.current_struct is not None
+             and self.function is not None
+-            and isinstance(node.receiver.decl, FieldNode)
++            and isinstance(getattr(node.receiver, "decl", None), FieldNode)
+         ):
+             self.function.mutation_dependencies.append(fn)
+
+@@ -1182,6 +1275,20 @@ class SemanticChecker:
+         self.member_calls.append(node)
+         return node.type
+
++    def visit_resultfield(self, node):
++        node.receiver.accept(self)
++        struct_node = self.structs.get(node.receiver.type)
++        if struct_node is None:
++            raise CompileError(node.line, node.column,
++                               f"type '{node.receiver.type}' has no fields")
++        for index, struct_field in enumerate(struct_node.fields):
++            if struct_field.name == node.name:
++                node.index = index
++                node.type = struct_field.type_name
++                return node.type
++        raise CompileError(node.line, node.column,
++                           f"unknown field '{node.name}' in struct '{struct_node.name}'")
++
+     def visit_fieldaccess(self, node):
+         decl, indices, types, mut_flags = self.resolve_chain(
+             node,
+@@ -1290,7 +1397,7 @@ class SemanticChecker:
+
+         if (
+             len(values) == 1
+-            and isinstance(values[0], (VarNode, CallNode))
++            and isinstance(values[0], ExprNode)
+             and values[0].type == node.type_name
+         ):
+             return
+@@ -1361,6 +1468,8 @@ class SemanticChecker:
+         mut_flags = [decl.mutable]
+
+         for name, line, column in path:
++            if current is None:
++                raise CompileError(line, column, f"type '{types[-1]}' has no fields")
+             field_index = None
+             struct_field = None
+             for index, field_candidate in enumerate(current.fields):
+@@ -1454,6 +1563,19 @@ class SemanticChecker:
+         ):
+             self.function.mutating = True
+
++    def visit_print(self, node):
++        node.value.accept(self)
++
++    def visit_string(self, node):
++        return None
++
++    def visit_while(self, node):
++        node.condition.accept(self)
++        if node.condition.type != "bool":
++            raise CompileError(node.condition.line, node.condition.column,
++                               "while condition must be bool")
++        node.body.accept(self)
++
+     def visit_if(self, node):
+         condition_type = node.condition.accept(self)
+
+@@ -1600,6 +1722,9 @@ class SemanticChecker:
+
+             receiver = call.receiver
+
++            if isinstance(receiver, (CallNode, MemberCallNode, ResultFieldNode)):
++                continue
++
+             if isinstance(receiver, FieldAccessNode):
+                 mut_flags = receiver.mut_flags
+             else:
+@@ -1615,7 +1740,7 @@ class SemanticChecker:
+
+ class CodeGenerator:
+     def __init__(self):
+-        self.module = ir.Module(name="practice4")
++        self.module = ir.Module(name="practice7", context=ir.Context())
+         self.struct_types = {}
+         self.structs = {}
+         self.module.triple = llvm.get_default_triple()
+@@ -1632,6 +1757,16 @@ class CodeGenerator:
+             ir.FunctionType(I32, [I8.as_pointer()], var_arg=True),
+             name="printf",
+         )
++        self.scanf = ir.Function(
++            self.module,
++            ir.FunctionType(I32, [I8.as_pointer()], var_arg=True),
++            name="scanf",
++        )
++        self.read_format = self.global_string("read_format", b"%d\0")
++        self.text_format = self.global_string("text_format", b"%s\0")
++        self.print_i32_format = self.global_string("print_i32_format", b"%d\0")
++        self.print_i64_format = self.global_string("print_i64_format", b"%lld\0")
++        self.newline = self.global_string("newline", b"\n\0")
+         self.int_format = self.global_string(
+             "int_format",
+             b"Program exit with result %lld\n\0",
+@@ -1756,6 +1891,11 @@ class CodeGenerator:
+         self.this_pointer = saved_this_pointer
+
+     def visit_call(self, node):
++        if node.name == "read":
++            slot = self.create_entry_alloca("i32", "read.slot")
++            self.builder.call(self.scanf, [self.pointer(self.read_format), slot])
++            return self.builder.load(slot, name="read.value")
++
+         args = []
+
+         if getattr(node, "implicit_receiver", False):
+@@ -1772,6 +1912,10 @@ class CodeGenerator:
+             name=f"{node.name}.result",
+         )
+
++    def visit_resultfield(self, node):
++        value = node.receiver.accept(self)
++        return self.builder.extract_value(value, node.index, name="result.field")
++
+     def visit_fieldaccess(self, node):
+         pointer = self.declaration_pointer(node.decl)
+         for index in node.indices:
+@@ -1844,7 +1988,7 @@ class CodeGenerator:
+
+             if (
+                 len(values) == 1
+-                and isinstance(values[0], (VarNode, CallNode))
++                and isinstance(values[0], ExprNode)
+                 and values[0].type == node.type_name
+             ):
+                 value = values[0].accept(self)
+@@ -1899,6 +2043,62 @@ class CodeGenerator:
+         if node.exit_node is not None:
+             node.exit_node.accept(self)
+
++    def print_text(self, text):
++        data = text.encode("utf-8", errors="surrogateescape") + b"\0"
++        name = self.module.get_unique_name("print.text")
++        value = self.global_string(name, data)
++        self.builder.call(self.printf, [self.pointer(self.text_format), self.pointer(value)])
++
++    def print_value(self, value, type_name):
++        if type_name in self.structs:
++            slot = self.create_entry_alloca(type_name, "print.object")
++            self.builder.store(value, slot)
++            self.print_struct(slot, self.structs[type_name])
++        elif type_name == "bool":
++            text = self.builder.select(value, self.pointer(self.true_text),
++                                       self.pointer(self.false_text), name="print.bool")
++            self.builder.call(self.printf, [self.pointer(self.text_format), text])
++        else:
++            fmt = self.print_i32_format if type_name == "i32" else self.print_i64_format
++            self.builder.call(self.printf, [self.pointer(fmt), value])
++
++    def print_struct(self, pointer, struct_node):
++        self.print_text(struct_node.name + "{")
++        for index, struct_field in enumerate(struct_node.fields):
++            self.print_text((", " if index else "") + struct_field.name + ": ")
++            field_pointer = self.builder.gep(
++                pointer, [ir.Constant(I32, 0), ir.Constant(I32, index)],
++                name="print.field.ptr",
++            )
++            if struct_field.type_name in self.structs:
++                self.print_struct(field_pointer, self.structs[struct_field.type_name])
++            else:
++                value = self.builder.load(field_pointer, name="print.field.value")
++                self.print_value(value, struct_field.type_name)
++        self.print_text("}")
++
++    def visit_print(self, node):
++        if isinstance(node.value, StringNode):
++            self.print_text(node.value.value)
++        else:
++            value = node.value.accept(self)
++            self.print_value(value, node.value.type)
++        self.builder.call(self.printf, [self.pointer(self.text_format), self.pointer(self.newline)])
++
++    def visit_while(self, node):
++        condition_block = self.function.append_basic_block("while.condition")
++        body_block = self.function.append_basic_block("while.body")
++        end_block = self.function.append_basic_block("while.end")
++        self.builder.branch(condition_block)
++        self.builder.position_at_end(condition_block)
++        condition = node.condition.accept(self)
++        self.builder.cbranch(condition, body_block, end_block)
++        self.builder.position_at_end(body_block)
++        node.body.accept(self)
++        if not self.builder.block.is_terminated:
++            self.builder.branch(condition_block)
++        self.builder.position_at_end(end_block)
++
+     def visit_if(self, node):
+         condition = node.condition.accept(self)
+
+@@ -2032,6 +2232,12 @@ class CodeGenerator:
+         return decl.pointer
+
+     def receiver_pointer(self, receiver):
++        if isinstance(receiver, (CallNode, MemberCallNode, ResultFieldNode)):
++            value = receiver.accept(self)
++            pointer = self.create_entry_alloca(receiver.type, "receiver.temporary")
++            self.builder.store(value, pointer)
++            return pointer
++
+         pointer = self.declaration_pointer(receiver.decl)
+
+         if isinstance(receiver, FieldAccessNode):
+diff --git a/src/lexer.py b/src/lexer.py
+index f2cc8f7..7d45a62 100644
+--- a/src/lexer.py
++++ b/src/lexer.py
+@@ -13,6 +13,9 @@ KEYWORDS = {
+     "else",
+     "struct",
+     "fn",
++    "read",
++    "print",
++    "while",
+ }
+
+
+@@ -77,6 +80,11 @@ def lex(data):
+                 tokens = []
+                 line += 1
+                 column = 0
++            elif byte == ord('"'):
++                state = "STRING"
++                start = i + 1
++                start_line = line
++                start_column = column
+             elif is_letter(byte):
+                 state = "IDENT"
+                 start = i
+@@ -124,6 +132,17 @@ def lex(data):
+                     f"unexpected byte '{display_byte(byte)}'",
+                 )
+
++        elif state == "STRING":
++            if byte is None or byte == ord("\n"):
++                raise LexError(
++                    start_line, start_column,
++                    "string literal is not closed on its line",
++                )
++            if byte == ord('"'):
++                text = data[start:i].decode("utf-8", errors="surrogateescape")
++                tokens.append(Token("string", text, start_line, start_column))
++                state = "START"
++
+         elif state == "IDENT":
+             if byte is not None and (is_letter(byte) or is_digit(byte)):
+                 pass
+ubuntu@noble3:~/languages-compilers-design/project1$

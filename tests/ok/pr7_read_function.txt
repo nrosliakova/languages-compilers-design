@@ -1,0 +1,7 @@
+fn add := (i32 a, i32 b) -> i32
+{
+    i32 r{a + b}
+    exit r
+}
+i32 r{add(read(), 2)}
+exit r
