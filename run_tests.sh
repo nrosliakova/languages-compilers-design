@@ -12,7 +12,9 @@ for source in tests/ok/*.txt; do
     expected="${source%.txt}.expected"
     rm -f "$ir_file" "$actual_file"
     if python3 src/compiler.py "$source" "$ir_file" 2>"$actual_file"; then
-        if lli "$ir_file" >"$actual_file" && diff -u "$expected" "$actual_file"; then
+        input="${source%.txt}.in"
+        if ! test -f "$input"; then input=/dev/null; fi
+        if lli "$ir_file" <"$input" >"$actual_file" && diff -u "$expected" "$actual_file"; then
             echo "PASS: $source"; passed=$((passed + 1))
         else
             echo "FAIL: $source"; failed=$((failed + 1))

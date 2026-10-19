@@ -41,7 +41,10 @@ def check_test(source, valid, workdir):
 
         executed = subprocess.run(
             ["lli", str(output)],
+            input=source.with_suffix(".in").read_bytes()
+            if source.with_suffix(".in").exists() else b"",
             capture_output=True,
+            timeout=10,
         )
 
         if executed.returncode != 0:
@@ -85,7 +88,10 @@ def main():
                 failed += 1
 
             for source in sources:
-                success, detail = check_test(source, valid, workdir)
+                try:
+                    success, detail = check_test(source, valid, workdir)
+                except subprocess.TimeoutExpired:
+                    success, detail = False, "execution timed out after 10 seconds"
 
                 result = "PASS" if success else "FAIL"
                 kind = "valid" if valid else "invalid"

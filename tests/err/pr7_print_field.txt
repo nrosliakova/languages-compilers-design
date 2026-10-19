@@ -1,0 +1,5 @@
+struct S
+{
+    i32 print
+}
+exit 0

@@ -1,6 +1,6 @@
-# Languages and Compilers Design — Practice 5
+# Languages and Compilers Design — Practice 7
 
-A compiler with if/else, boolean negation, nested scopes, and LLVM control flow.
+A compiler with structs, member functions, mutation checking, input/output, and LLVM control flow.
 
 ## Pipeline
 
@@ -72,12 +72,61 @@ Each test has a matching .expected file.
 Comparisons normalize CRLF/LF line endings.
 Failed compilation must not leave an output IR file.
 
-The current suite contains 15 valid and 20 invalid tests.
-Practice 5 adds 7 valid and 10 invalid tests.
+The current suite contains 48 valid and 88 invalid tests (136 total).
 AST dumps for the new valid programs are saved beside their sources.
 
 Implementation lives in src/.
 Root-level compiler.py and lexer.py preserve compatibility with earlier commands
 and manual test imports.
 
-The optional while extension is not implemented.
+The while extension is implemented, including print and read inside its body.
+
+
+## Practice 7
+
+The required member-function, I/O, and testing tasks are implemented.
+The optional call-in-the-middle-of-a-chain task is also implemented.
+
+- Structs contain fields first, then methods. Methods have their own per-struct namespace.
+- Parameters and local variables hide object fields. Methods do not see top-level variables.
+- An unqualified call inside a method prefers a method on the same object, then a global function.
+- Mutation flags propagate through calls until a fixed point, including cycles.
+- A mutating call requires a mutable receiver and every field along its receiver chain.
+- LLVM methods receive the original object's address as a hidden first argument.
+- read() returns i32 and takes no arguments. read and print are reserved names.
+- print accepts i32, i64, bool, a literal, or a struct, and emits one trailing newline.
+- Literal backslashes are not escapes. Percent signs are printed as text.
+- Struct printing recursively follows the declared fields, including returned structs.
+- Calls returning structs can be followed by fields and member calls.
+- A call result is a temporary copy; mutating it does not change the original object.
+- Call results cannot be assignment targets.
+- Both runners use a matching NAME.in file when present and compare the whole stdout.
+
+### Demonstration commands
+
+```bash
+python3 src/compiler.py --ast tests/ok/pr7_task1.txt
+python3 src/compiler.py tests/ok/pr7_task1.txt output.ll
+lli output.ll
+# Program exit with result 83
+
+grep -n -A 25 'define.*Point_shift' output.ll
+
+python3 src/compiler.py tests/ok/pr7_print_all.txt output.ll
+lli output.ll < tests/ok/pr7_print_all.in
+
+python3 src/compiler.py tests/err/pr7_field_after_method.txt output.ll
+python3 src/compiler.py tests/err/pr7_mutating_const.txt output.ll
+# Both commands must fail with line:column diagnostics.
+
+python3 src/compiler.py tests/ok/pr7_bonus_example.txt output.ll
+lli output.ll
+# Program exit with result 46
+
+python3 check.py
+bash run_tests.sh
+# Both: Passed: 136, Failed: 0
+```
+
+On a new machine, install llvmlite for the Python interpreter being used,
+and make sure LLVM's lli is on PATH. See PRACTICE7_CHANGES.md for the change guide.

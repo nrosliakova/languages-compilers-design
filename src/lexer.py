@@ -13,6 +13,9 @@ KEYWORDS = {
     "else",
     "struct",
     "fn",
+    "read",
+    "print",
+    "while",
 }
 
 
@@ -77,6 +80,11 @@ def lex(data):
                 tokens = []
                 line += 1
                 column = 0
+            elif byte == ord('"'):
+                state = "STRING"
+                start = i + 1
+                start_line = line
+                start_column = column
             elif is_letter(byte):
                 state = "IDENT"
                 start = i
@@ -123,6 +131,17 @@ def lex(data):
                     column,
                     f"unexpected byte '{display_byte(byte)}'",
                 )
+
+        elif state == "STRING":
+            if byte is None or byte == ord("\n"):
+                raise LexError(
+                    start_line, start_column,
+                    "string literal is not closed on its line",
+                )
+            if byte == ord('"'):
+                text = data[start:i].decode("utf-8", errors="surrogateescape")
+                tokens.append(Token("string", text, start_line, start_column))
+                state = "START"
 
         elif state == "IDENT":
             if byte is not None and (is_letter(byte) or is_digit(byte)):

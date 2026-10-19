@@ -1,0 +1,21 @@
+fn say := (i32 n) -> i32
+{
+    print(n)
+    exit n
+}
+i32 mut n{0}
+while n != 3
+{
+    print(n)
+    n := n + 1
+}
+if n == 3
+{
+    print("yes")
+}
+else
+{
+    print("no")
+}
+i32 r{say(n)}
+exit r
