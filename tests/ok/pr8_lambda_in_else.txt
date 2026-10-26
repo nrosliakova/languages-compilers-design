@@ -1,0 +1,14 @@
+i32 x{4}
+if false
+{
+    print(0)
+}
+else
+{
+    fn f := [x]() -> i32
+    {
+        exit x
+    }
+    print(f())
+}
+exit 0

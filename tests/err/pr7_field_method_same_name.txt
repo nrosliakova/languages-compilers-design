@@ -1,0 +1,10 @@
+struct S
+{
+    i32 x
+    fn x := () -> i32
+    {
+        exit 0
+    }
+}
+S s{1}
+exit s.x()

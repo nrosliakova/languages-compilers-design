@@ -1,0 +1,7 @@
+fn input := []() -> i32
+{
+    i32 n{read()}
+    print(n)
+    exit n
+}
+exit input()

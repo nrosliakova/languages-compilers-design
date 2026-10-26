@@ -1,0 +1,8 @@
+i32 n{0}
+fn f := [mut n]() -> i32
+{
+    n := n + 1
+    exit n
+}
+f := f
+exit 0

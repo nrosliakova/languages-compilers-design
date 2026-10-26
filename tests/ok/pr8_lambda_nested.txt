@@ -1,0 +1,11 @@
+i32 base{10}
+fn outer := [base](i32 x) -> i32
+{
+    fn inner := [base, x](i32 y) -> i32
+    {
+        i32 r{base + x + y}
+        exit r
+    }
+    exit inner(2)
+}
+exit outer(3)

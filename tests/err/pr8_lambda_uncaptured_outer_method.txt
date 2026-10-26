@@ -1,0 +1,17 @@
+struct Box
+{
+    i32 k
+    fn value := () -> i32
+    {
+        fn f := []() -> i32
+        {
+            exit helper()
+        }
+        exit f()
+    }
+    fn helper := () -> i32
+    {
+        exit k
+    }
+}
+exit 0

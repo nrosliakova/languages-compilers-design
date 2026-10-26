@@ -1,0 +1,7 @@
+struct Point
+{
+    i32 x
+    bool x
+}
+i32 a{1}
+exit a

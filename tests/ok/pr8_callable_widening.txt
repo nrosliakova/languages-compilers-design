@@ -1,0 +1,11 @@
+struct Wide
+{
+    i64 offset
+    fn call := (i64 v) -> i64
+    {
+        i64 r{v + offset}
+        exit r
+    }
+}
+Wide w{10}
+exit w(2)

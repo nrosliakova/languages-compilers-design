@@ -1,0 +1,9 @@
+i32 a{1}
+if a == 1
+{
+    struct Point
+    {
+        i32 x
+    }
+}
+exit a

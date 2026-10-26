@@ -1,0 +1,11 @@
+struct Box
+{
+    i32 mut n
+}
+Box box{1}
+fn f := [box]() -> i32
+{
+    box.n := 2
+    exit box.n
+}
+exit 0

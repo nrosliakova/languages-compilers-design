@@ -1,0 +1,14 @@
+i32 n{0}
+fn advance := [mut n](i32 count) -> i32
+{
+    i32 mut i{0}
+    while i != count
+    {
+        n := n + 1
+        i := i + 1
+    }
+    exit n
+}
+print(advance(3))
+print(advance(2))
+exit n

@@ -1,0 +1,8 @@
+fn f := (i32 n) -> i32
+{
+    i32 r{g + n}
+    exit r
+}
+i32 g{7}
+i32 a{f(1)}
+exit a

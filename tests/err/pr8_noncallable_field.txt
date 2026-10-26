@@ -1,0 +1,6 @@
+struct S
+{
+    i32 n
+}
+S s{1}
+exit s.n()

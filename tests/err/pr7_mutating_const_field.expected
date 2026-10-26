@@ -1,0 +1,1 @@
+compilation error: line 27:16: cannot call mutating member function 'shift' through a const object or field
