@@ -4,7 +4,10 @@ field_decl ::= type [ "mut" ] ident NL
 fn ::= "fn" ident ":=" "(" [ param { "," param } ] ")" "->" type NL block
 param ::= type ident
 type ::= "i32" | "i64" | "bool" | ident
-statement ::= ( declaration | assignment | print ) NL | if | while
+statement ::= ( declaration | assignment | print ) NL | if | while | lambda
+lambda ::= "fn" ident ":=" "[" [ capture { "," capture } ] "]"
+           "(" [ param { "," param } ] ")" "->" type NL block
+capture ::= [ "mut" ] ident
 declaration ::= type [ "mut" ] ident "{" init_value { "," init_value } "}"
 init_value ::= expression | "{" init_value { "," init_value } "}"
 assignment ::= ident { "." ident } ":=" expression
@@ -34,3 +37,5 @@ arguments ::= "(" [ expression { "," expression } ] ")"
 # String literals do not interpret escape sequences.
 # A dot after a call requires a struct result (the optional Practice 7 extension).
 # Call results are temporary copies and cannot be assigned to.
+# Lambdas are statements, not ordinary top-level function declarations.
+# Capture lists on struct member functions are not allowed.

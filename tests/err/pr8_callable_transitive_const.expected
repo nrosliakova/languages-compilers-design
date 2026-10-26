@@ -1,0 +1,1 @@
+compilation error: line 21:8: cannot call mutating member function 'next' through a const object or field

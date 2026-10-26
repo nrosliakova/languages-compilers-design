@@ -113,6 +113,8 @@ def lex(data):
                 tokens.append(Token("operator", "(", line, column))
             elif byte == ord(")"):
                 tokens.append(Token("operator", ")", line, column))
+            elif byte in (ord("["), ord("]")):
+                tokens.append(Token("operator", chr(byte), line, column))
             elif byte == ord(":"):
                 state = "COLON"
                 start_line = line

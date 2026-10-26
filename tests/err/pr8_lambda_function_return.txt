@@ -1,0 +1,9 @@
+fn host := () -> i32
+{
+    fn f := []() -> i32
+    {
+        exit 1
+    }
+    exit f
+}
+exit 0

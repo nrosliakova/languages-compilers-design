@@ -1,0 +1,12 @@
+i32 base{10}
+fn add := [base](i32 x) -> i32
+{
+    i32 r{base + x}
+    exit r
+}
+fn twice := [add](i32 x) -> i32
+{
+    i32 r{add(x) * 2}
+    exit r
+}
+exit twice(3)

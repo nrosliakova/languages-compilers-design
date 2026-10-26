@@ -1,0 +1,11 @@
+bool flag{true}
+i64 large{2147483648}
+fn choose := [flag, large]() -> i64
+{
+    if flag
+    {
+        exit large
+    }
+    exit 0
+}
+exit choose()

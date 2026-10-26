@@ -1,6 +1,6 @@
-# Languages and Compilers Design — Practice 7
+# Languages and Compilers Design — Practice 8
 
-A compiler with structs, member functions, mutation checking, input/output, and LLVM control flow.
+A compiler with structs, member functions, callable objects, lambdas, mutation checking, input/output, and LLVM control flow.
 
 ## Pipeline
 
@@ -72,7 +72,7 @@ Each test has a matching .expected file.
 Comparisons normalize CRLF/LF line endings.
 Failed compilation must not leave an output IR file.
 
-The current suite contains 48 valid and 88 invalid tests (136 total).
+The current suite contains 78 valid and 137 invalid tests (215 total).
 AST dumps for the new valid programs are saved beside their sources.
 
 Implementation lives in src/.
@@ -125,8 +125,41 @@ lli output.ll
 
 python3 check.py
 bash run_tests.sh
-# Both: Passed: 136, Failed: 0
+# Both: Passed: 215, Failed: 0
 ```
 
 On a new machine, install llvmlite for the Python interpreter being used,
 and make sure LLVM's lli is on PATH. See PRACTICE7_CHANGES.md for the change guide.
+
+## Practice 8
+
+Required callable-object and lambda support is implemented. Lambdas capture
+copies (const by default, mutable with `mut`), lower to internal structs with `call` methods, and are statements
+in any block. Their anonymous types cannot be used as ordinary values outside
+calls and capture lists. Optional `mut` captures are implemented, including copies of mutable lambdas.
+
+```bash
+python3 src/compiler.py tests/ok/pr8_task1.txt output.ll
+lli output.ll
+python3 src/compiler.py --ast tests/ok/pr8_lambda_task2.txt
+python3 src/compiler.py --ast-checked tests/ok/pr8_lambda_task2.txt
+python3 src/compiler.py tests/ok/pr8_lambda_task2.txt output.ll
+lli output.ll
+python3 check_pr8.py
+python3 check.py
+bash run_tests.sh
+```
+
+The main suite contains 215 programs. `check_pr8.py` adds nine AST/IR checks.
+See `MUT_CAPTURES_GUIDE.md` for the current update. `TASK1_GUIDE.md` and
+`TASK2_GUIDE.md` describe earlier milestones and the known pre-existing initializer issue.
+
+### Mutable capture demonstration
+
+```bash
+python3 src/compiler.py --ast-checked tests/ok/pr8_mut_bonus.txt
+python3 src/compiler.py tests/ok/pr8_mut_bonus.txt output.ll
+lli output.ll
+```
+
+Expected stdout: `1`, `2`, `34`, `3`, then `Program exit with result 0`.

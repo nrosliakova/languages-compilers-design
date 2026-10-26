@@ -101,6 +101,22 @@ class FnNode(Node):
     llvm_fn: object = field(default=None, init=False, repr=False)
 
 @dataclass
+class CaptureNode(Node):
+    name: str
+    mutable: bool = False
+
+
+@dataclass
+class LambdaNode(Node):
+    name: str
+    captures: list
+    params: list
+    result_type: str
+    body: BlockNode
+    lowered_struct: object = field(default=None, init=False, repr=False)
+    declaration: object = field(default=None, init=False, repr=False)
+
+@dataclass
 class DeclNode(Node):
     name: str
     type_name: str
@@ -312,7 +328,7 @@ class Parser:
                     "a struct cannot be declared after a statement",
                 )
 
-            if self.at("fn") and seen_statement:
+            if self.at("fn") and not self.is_lambda() and seen_statement:
                 token = self.tokens[0]
                 raise CompileError(
                     token.line,
@@ -324,7 +340,7 @@ class Parser:
                 exit_node = self.parse_exit()
             elif self.at("struct"):
                 statements.append(self.parse_struct())
-            elif self.at("fn"):
+            elif self.at("fn") and not self.is_lambda():
                 seen_fn = True
                 statements.append(self.parse_fn())
             else:
@@ -379,6 +395,8 @@ class Parser:
                 "'else' without an 'if'",
             )
         if token.text == "fn":
+            if self.is_lambda():
+                return self.parse_fn(allow_lambda=True)
             raise CompileError(
                 token.line,
                 token.column,
@@ -641,11 +659,42 @@ class Parser:
             "'{' is never closed",
         )
 
-    def parse_fn(self):
+    def is_lambda(self):
+        return (
+            self.at("fn")
+            and self.pos + 3 < len(self.tokens)
+            and self.tokens[self.pos + 3].text == "["
+        )
+
+    def parse_fn(self, allow_lambda=False):
         fn_token = self.eat()
         name = self.expect_kind("identifier", "expected a function name")
         self.expect_text(":=", "expected ':=' after the function name")
-        self.expect_text("(", "expected '(' after ':='")
+        captures = None
+        if self.at("["):
+            if not allow_lambda:
+                self.error_here("a member function cannot have a capture list")
+            self.eat()
+            captures = []
+            if not self.at("]"):
+                while True:
+                    mutable = False
+                    if self.at("mut"):
+                        self.eat()
+                        mutable = True
+                    capture = self.expect_kind(
+                        "identifier", "expected a capture variable name",
+                    )
+                    captures.append(
+                        CaptureNode(
+                            capture.line, capture.column, capture.text, mutable,
+                        )
+                    )
+                    if not self.at(","):
+                        break
+                    self.eat()
+            self.expect_text("]", "expected ']' after the captures")
+        self.expect_text("(", "expected '(' after the function name or captures")
 
         params = []
         if not self.at(")"):
@@ -705,6 +754,12 @@ class Parser:
                 body.line,
                 body.column,
                 f"function '{name.text}' has no exit",
+            )
+
+        if captures is not None:
+            return LambdaNode(
+                fn_token.line, fn_token.column, name.text, captures,
+                params, result_token.text, body,
             )
 
         return FnNode(
@@ -951,6 +1006,10 @@ class AstPrinter:
     def visit_decl(self, node):
         mutability = "mut" if node.mutable else "const"
         self.add(f"Decl {node.name} {node.type_name} {mutability}")
+        if getattr(node, "capture_init", False):
+            for value in node.init.values:
+                self.child(value)
+            return
         self.child(node.init)
         for extra in node.extra_inits:
             self.child(extra)
@@ -976,6 +1035,22 @@ class AstPrinter:
         for param in node.params:
             self.child(param)
         self.child(node.body)
+
+    def visit_lambda(self, node):
+        self.add(f"Lambda {node.name} -> {node.result_type}")
+        if node.lowered_struct is not None:
+            self.child(node.lowered_struct)
+            self.child(node.declaration)
+        else:
+            for capture in node.captures:
+                self.child(capture)
+            for param in node.params:
+                self.child(param)
+            self.child(node.body)
+
+    def visit_capture(self, node):
+        prefix = "mut " if node.mutable else ""
+        self.add(f"Capture {prefix}{node.name}")
 
     def visit_param(self, node):
         self.add(f"Param {node.name} {node.type_name}")
@@ -1025,7 +1100,10 @@ class AstPrinter:
         self.child(node.receiver)
 
     def visit_membercall(self, node):
-        self.add(f"MemberCall {node.name}")
+        if hasattr(node, "callable_name"):
+            self.add(f"CallableCall {node.callable_name}")
+        else:
+            self.add(f"MemberCall {node.name}")
         self.child(node.receiver)
         for arg in node.args:
             self.child(arg)
@@ -1038,22 +1116,74 @@ class SemanticChecker:
         self.function = None
         self.current_struct = None
         self.member_calls = []
+        self.generated_structs = []
+        self.lambda_context = None
+        self.lambda_counts = {}
 
     def lookup(self, node, name):
-        for frame in reversed(self.scopes):
-            if name in frame:
-                return frame[name]
+        decl = self.find_variable(name)
+        if decl is not None:
+            return decl
 
+        self.check_hidden_lambda_name(node, name)
         raise CompileError(
             node.line,
             node.column,
             f"variable '{name}' is used before its declaration",
         )
 
+    def find_variable(self, name):
+        for frame in reversed(self.scopes):
+            if name in frame:
+                return frame[name]
+        return None
+
+    def check_hidden_lambda_name(self, at, name):
+        if self.lambda_context is None:
+            return
+        node, outer_names = self.lambda_context
+        if name in outer_names:
+            raise CompileError(
+                at.line, at.column,
+                f"'{name}' is not captured by lambda '{node.name}': "
+                f"add it to the capture list, [{name}]",
+            )
+        if name == node.name:
+            raise CompileError(
+                at.line, at.column,
+                f"lambda '{name}' cannot call or capture itself: "
+                f"its name is declared after its body",
+            )
+
+    def is_lambda_type(self, type_name):
+        return getattr(self.structs.get(type_name), "is_lambda", False)
+
+    def reject_lambda_value(self, value, action):
+        if self.is_lambda_type(getattr(value, "type", None)):
+            if action.startswith("pass to "):
+                action = "be passed to " + action[len("pass to "):]
+            elif action.startswith("assign to "):
+                action = "be assigned to " + action[len("assign to "):]
+            elif action.startswith("initialise "):
+                action = "be used to " + action
+            name = getattr(value, "name", getattr(value, "base", "value"))
+            raise CompileError(
+                value.line, value.column,
+                f"'{name}' is a lambda and cannot {action}: its type has no name",
+            )
+
+    def reject_capture_access(self, at, struct_node, name):
+        if getattr(struct_node, "is_lambda", False):
+            raise CompileError(
+                at.line, at.column,
+                f"cannot access '{name}': a lambda's captures are private to its body",
+            )
+
     def check(self, program):
         program.accept(self)
 
     def visit_program(self, node):
+        node.generated_structs = self.generated_structs
         for statement in node.statements:
             if isinstance(statement, StructNode):
                 statement.accept(self)
@@ -1125,20 +1255,8 @@ class SemanticChecker:
 
     def collect_methods(self, struct_node):
         struct_node.method_map = {}
-        field_names = {
-            struct_field.name
-            for struct_field in struct_node.fields
-        }
 
         for method in struct_node.methods:
-            if method.name in field_names:
-                raise CompileError(
-                    method.line,
-                    method.column,
-                    f"member function '{method.name}' has the same name "
-                    f"as a field in struct '{struct_node.name}'",
-                )
-
             method.mutating = False
             method.mutating = False
             method.mutation_dependencies = []
@@ -1172,6 +1290,83 @@ class SemanticChecker:
             self.function = saved_function
             self.current_struct = saved_struct
 
+    def visit_lambda(self, node):
+        current_scope = self.scopes[-1]
+        if node.name in current_scope:
+            raise CompileError(
+                node.line, node.column,
+                f"variable '{node.name}' is already declared in this block",
+            )
+
+        fields = []
+        values = []
+        capture_names = set()
+        for capture in node.captures:
+            if capture.name in capture_names:
+                raise CompileError(
+                    capture.line, capture.column,
+                    f"'{capture.name}' is captured twice",
+                )
+            capture_names.add(capture.name)
+            decl = self.find_variable(capture.name)
+            if decl is None:
+                raise CompileError(
+                    capture.line, capture.column,
+                    f"cannot capture '{capture.name}': "
+                    f"no variable '{capture.name}' is visible here",
+                )
+            struct_field = FieldNode(
+                capture.line, capture.column, capture.name, decl.type_name,
+                capture.mutable,
+            )
+            struct_field.is_capture = True
+            fields.append(struct_field)
+            value = VarNode(capture.line, capture.column, capture.name)
+            value.accept(self)
+            values.append(value)
+
+        for param in node.params:
+            if param.name in capture_names:
+                raise CompileError(
+                    param.line, param.column,
+                    f"parameter '{param.name}' has the same name as a capture",
+                )
+
+        number = self.lambda_counts.get(node.name, 0) + 1
+        self.lambda_counts[node.name] = number
+        type_name = "lambda." + node.name
+        if number > 1:
+            type_name += "." + str(number)
+        method = FnNode(
+            node.line, node.column, "call", node.params, node.result_type, node.body,
+        )
+        struct_node = StructNode(
+            node.line, node.column, type_name, fields, [method],
+        )
+        struct_node.is_lambda = True
+        struct_node.accept(self)
+        self.collect_methods(struct_node)
+        self.generated_structs.append(struct_node)
+        node.lowered_struct = struct_node
+
+        saved_context = self.lambda_context
+        outer_names = {name for scope in self.scopes for name in scope}
+        self.lambda_context = (node, outer_names)
+        try:
+            self.visit_fn(method, owner=struct_node)
+        finally:
+            self.lambda_context = saved_context
+
+        # Captures were resolved in the declaration's scope, before entering the body.
+        initializers = InitListNode(node.line, node.column, values)
+        declaration = DeclNode(
+            node.line, node.column, node.name, type_name,
+            any(capture.mutable for capture in node.captures), initializers,
+        )
+        declaration.capture_init = True
+        node.declaration = declaration
+        current_scope[node.name] = declaration
+
     def visit_call(self, node):
         if node.name == "read":
             if node.args:
@@ -1182,7 +1377,7 @@ class SemanticChecker:
         fn = None
         node.implicit_receiver = False
 
-        if self.current_struct is not None:
+        if self.current_struct is not None and self.lambda_context is None:
             fn = self.current_struct.method_map.get(node.name)
             if fn is not None:
                 node.implicit_receiver = True
@@ -1190,7 +1385,16 @@ class SemanticChecker:
         if fn is None:
             fn = self.fns.get(node.name)
 
+        decl = self.find_variable(node.name)
+        if decl is not None:
+            if fn is not None:
+                self.ambiguous_call(node)
+            receiver = VarNode(node.line, node.column, node.name)
+            receiver.accept(self)
+            return self.rewrite_callable(node, receiver)
+
         if fn is None:
+            self.check_hidden_lambda_name(node, node.name)
             raise CompileError(
                 node.line,
                 node.column,
@@ -1222,8 +1426,39 @@ class SemanticChecker:
         node.type = fn.result_type
         return node.type
 
-    def visit_membercall(self, node):
-        node.receiver.accept(self)
+    def ambiguous_call(self, node):
+        raise CompileError(
+            node.line,
+            node.column,
+            f"'{node.name}' is both a variable and a function: rename one of them",
+        )
+
+    def rewrite_callable(self, node, receiver):
+        struct_node = self.structs.get(receiver.type)
+        if struct_node is None:
+            reason = f"it is {receiver.type}"
+        elif "call" not in struct_node.method_map:
+            reason = f"{receiver.type} has no member function 'call'"
+        else:
+            reason = None
+
+        if reason is not None:
+            raise CompileError(
+                node.line,
+                node.column,
+                f"'{node.name}' is not callable: {reason}",
+            )
+
+        # Rewrite in place so every parent keeps its reference to this expression.
+        node.callable_name = node.name
+        node.__class__ = MemberCallNode
+        node.receiver = receiver
+        node.name = "call"
+        return self.visit_membercall(node, receiver_checked=True)
+
+    def visit_membercall(self, node, receiver_checked=False):
+        if not receiver_checked:
+            node.receiver.accept(self)
         receiver_type = node.receiver.type
         struct_node = self.structs.get(receiver_type)
 
@@ -1236,6 +1471,41 @@ class SemanticChecker:
             )
 
         fn = struct_node.method_map.get(node.name)
+
+        if not hasattr(node, "callable_name"):
+            struct_field = next(
+                (item for item in struct_node.fields if item.name == node.name),
+                None,
+            )
+            if getattr(struct_node, "is_lambda", False) and fn is not None:
+                # Private captures do not hide the lambda's public call method.
+                struct_field = None
+            if struct_field is not None:
+                self.reject_capture_access(node, struct_node, node.name)
+                if fn is not None:
+                    self.ambiguous_call(node)
+
+                receiver = node.receiver
+                part = (node.name, node.line, node.column)
+                if isinstance(receiver, VarNode):
+                    receiver = FieldAccessNode(
+                        receiver.line, receiver.column, receiver.name, [part],
+                    )
+                    receiver.accept(self)
+                elif isinstance(receiver, FieldAccessNode):
+                    receiver = FieldAccessNode(
+                        receiver.line, receiver.column, receiver.base,
+                        receiver.path + [part],
+                    )
+                    receiver.accept(self)
+                else:
+                    # A field of a returned value is still a temporary copy.
+                    receiver = ResultFieldNode(
+                        node.line, node.column, receiver, node.name,
+                    )
+                    receiver.index = struct_node.fields.index(struct_field)
+                    receiver.type = struct_field.type_name
+                return self.rewrite_callable(node, receiver)
 
         if fn is None:
             raise CompileError(
@@ -1255,10 +1525,15 @@ class SemanticChecker:
             self.function.mutation_dependencies.append(fn)
 
         if len(node.args) != len(fn.params):
+            subject = (
+                f"callable object '{node.callable_name}'"
+                if hasattr(node, "callable_name")
+                else f"member function '{node.name}'"
+            )
             raise CompileError(
                 node.line,
                 node.column,
-                f"member function '{node.name}' needs "
+                f"{subject} needs "
                 f"{len(fn.params)} arguments, got {len(node.args)}",
             )
 
@@ -1268,7 +1543,7 @@ class SemanticChecker:
                 arg,
                 param.type_name,
                 arg,
-                f"pass to '{param.name}' of '{fn.name}'",
+                f"pass to '{param.name}' of '{getattr(node, 'callable_name', fn.name)}'",
             )
 
         node.type = fn.result_type
@@ -1281,6 +1556,7 @@ class SemanticChecker:
         if struct_node is None:
             raise CompileError(node.line, node.column,
                                f"type '{node.receiver.type}' has no fields")
+        self.reject_capture_access(node, struct_node, node.name)
         for index, struct_field in enumerate(struct_node.fields):
             if struct_field.name == node.name:
                 node.index = index
@@ -1341,6 +1617,9 @@ class SemanticChecker:
         node.init.accept(self)
         for extra in node.extra_inits:
             extra.accept(self)
+
+        for value in [node.init] + node.extra_inits:
+            self.reject_lambda_value(value, f"initialise '{node.name}'")
 
         if node.type_name in self.structs:
             self.check_struct_init(node, self.structs[node.type_name])
@@ -1470,6 +1749,7 @@ class SemanticChecker:
         for name, line, column in path:
             if current is None:
                 raise CompileError(line, column, f"type '{types[-1]}' has no fields")
+            self.reject_capture_access(at, current, name)
             field_index = None
             struct_field = None
             for index, field_candidate in enumerate(current.fields):
@@ -1517,6 +1797,7 @@ class SemanticChecker:
             node.target_type = types[-1]
             target_type = types[-1]
 
+            self.check_capture_assignment(node, decl)
             for link, mutable in zip(chain, mut_flags):
                 if not mutable:
                     raise CompileError(
@@ -1531,6 +1812,12 @@ class SemanticChecker:
             node.target_type = decl.type_name
             target_type = decl.type_name
 
+            if self.is_lambda_type(target_type):
+                raise CompileError(
+                    node.line, node.column,
+                    f"cannot assign to lambda '{node.name}': its type has no name",
+                )
+            self.check_capture_assignment(node, decl)
             if not decl.mutable:
                 raise CompileError(
                     node.line,
@@ -1563,8 +1850,17 @@ class SemanticChecker:
         ):
             self.function.mutating = True
 
+    def check_capture_assignment(self, node, decl):
+        if getattr(decl, "is_capture", False) and not decl.mutable:
+            raise CompileError(
+                node.line, node.column,
+                f"cannot assign to '{node.name}': the capture '{decl.name}' "
+                f"is const, write [mut {decl.name}]",
+            )
+
     def visit_print(self, node):
         node.value.accept(self)
+        self.reject_lambda_value(node.value, "be printed")
 
     def visit_string(self, node):
         return None
@@ -1593,6 +1889,7 @@ class SemanticChecker:
 
     def visit_exit(self, node):
         node.value.accept(self)
+        self.reject_lambda_value(node.value, "be the value of exit")
 
         if self.function is not None:
             self.check_assignable(
@@ -1634,6 +1931,8 @@ class SemanticChecker:
     def visit_binop(self, node):
         left_type = node.left.accept(self)
         right_type = node.right.accept(self)
+        self.reject_lambda_value(node.left, f"be used with '{node.op}'")
+        self.reject_lambda_value(node.right, f"be used with '{node.op}'")
 
         if node.op in {"+", "-", "*"}:
             if left_type == "bool" or right_type == "bool":
@@ -1677,6 +1976,7 @@ class SemanticChecker:
         return node.type
 
     def check_assignable(self, expr, want, at, action):
+        self.reject_lambda_value(expr, action)
         have = expr.type
         if have == want or (have == "i32" and want == "i64"):
             return
@@ -1731,6 +2031,13 @@ class SemanticChecker:
                 mut_flags = [receiver.decl.mutable]
 
             if not all(mut_flags):
+                if hasattr(call, "callable_name"):
+                    raise CompileError(
+                        call.line,
+                        call.column,
+                        f"cannot call '{call.callable_name}': its 'call' changes it, "
+                        f"and it is not mut",
+                    )
                 raise CompileError(
                     call.line,
                     call.column,
@@ -1805,18 +2112,19 @@ class CodeGenerator:
         return self.module
 
     def visit_program(self, node):
-        for statement in node.statements:
+        declarations = node.statements + getattr(node, "generated_structs", [])
+        for statement in declarations:
             if isinstance(statement, StructNode):
                 statement.accept(self)
             elif isinstance(statement, FnNode):
                 self.declare_fn(statement)
 
-        for statement in node.statements:
+        for statement in declarations:
             if isinstance(statement, StructNode):
                 for method in statement.methods:
                     self.declare_fn(method, owner=statement)
 
-        for statement in node.statements:
+        for statement in declarations:
             if isinstance(statement, StructNode):
                 for method in statement.methods:
                     self.visit_fn(method)
@@ -1979,6 +2287,8 @@ class CodeGenerator:
     def visit_decl(self, node):
         if node.type_name in self.structs:
             values = [node.init] + node.extra_inits
+            if getattr(node, "capture_init", False):
+                values = node.init.values
             struct_node = self.structs[node.type_name]
 
             node.pointer = self.create_entry_alloca(
@@ -2035,6 +2345,9 @@ class CodeGenerator:
         )
 
         self.builder.store(value, node.pointer)
+
+    def visit_lambda(self, node):
+        node.declaration.accept(self)
 
     def visit_block(self, node):
         for statement in node.statements:
@@ -2280,19 +2593,24 @@ def print_error(error):
 
 def main():
     ast_mode = len(sys.argv) == 3 and sys.argv[1] == "--ast"
-    compile_mode = len(sys.argv) == 3 and sys.argv[1] != "--ast"
+    checked_mode = len(sys.argv) == 3 and sys.argv[1] == "--ast-checked"
+    compile_mode = (
+        len(sys.argv) == 3
+        and sys.argv[1] not in {"--ast", "--ast-checked"}
+    )
 
-    if not ast_mode and not compile_mode:
+    if not ast_mode and not checked_mode and not compile_mode:
         print(
             "usage:\n"
             "  python3 compiler.py SOURCE OUTPUT.ll\n"
-            "  python3 compiler.py --ast SOURCE",
+            "  python3 compiler.py --ast SOURCE\n"
+            "  python3 compiler.py --ast-checked SOURCE",
             file=sys.stderr,
         )
         return 1
 
-    source_path = sys.argv[2] if ast_mode else sys.argv[1]
-    output_path = None if ast_mode else sys.argv[2]
+    source_path = sys.argv[2] if ast_mode or checked_mode else sys.argv[1]
+    output_path = None if ast_mode or checked_mode else sys.argv[2]
 
     if output_path is not None:
         try:
@@ -2307,6 +2625,9 @@ def main():
             return 0
 
         SemanticChecker().check(program)
+        if checked_mode:
+            print(program.accept(AstPrinter()))
+            return 0
         module = CodeGenerator().generate(program)
         with open(output_path, "w", encoding="utf-8") as output:
             output.write(str(module))

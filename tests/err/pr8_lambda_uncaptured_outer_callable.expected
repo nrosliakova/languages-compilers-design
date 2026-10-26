@@ -1,0 +1,1 @@
+compilation error: line 7:10: 'f' is not captured by lambda 'g': add it to the capture list, [f]

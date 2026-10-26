@@ -6,4 +6,5 @@ struct S
         exit 0
     }
 }
-exit 0
+S s{1}
+exit s.x()

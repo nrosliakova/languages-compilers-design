@@ -1,0 +1,1 @@
+compilation error: line 6:10: 'f' is a lambda and cannot be assigned to 'value': its type has no name

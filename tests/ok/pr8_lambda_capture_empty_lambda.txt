@@ -1,0 +1,9 @@
+fn one := []() -> i32
+{
+    exit 1
+}
+fn copy := [one]() -> i32
+{
+    exit one()
+}
+exit copy()

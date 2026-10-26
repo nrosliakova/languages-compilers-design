@@ -1,0 +1,23 @@
+struct Scale
+{
+    i32 k
+    fn call := (i32 v) -> i32
+    {
+        i32 r{v * k}
+        exit r
+    }
+}
+
+struct Holder
+{
+    Scale scale
+    fn apply := () -> i32
+    {
+        exit scale(2)
+    }
+}
+fn scale := (i32 v) -> i32
+{
+    exit v
+}
+exit 0
