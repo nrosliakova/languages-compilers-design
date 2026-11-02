@@ -1,0 +1,18 @@
+Program
+  Decl total i32 mut
+    Const 0
+  Decl n i32 const
+    Const 4
+  If
+    BinOp ==
+      Var n
+      Const 4
+    Block
+      Decl used i32 const
+        BinOp +
+          Var n
+          Const 1
+      Assign total
+        Var used
+  Exit
+    Var total

@@ -1,0 +1,14 @@
+Program
+  Decl k i32 mut
+    Const 0
+  While
+    BinOp !=
+      Var k
+      Const 3
+    Block
+      Assign k
+        BinOp +
+          Var k
+          Const 1
+  Exit
+    Var k

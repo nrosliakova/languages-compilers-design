@@ -2044,7 +2044,237 @@ class SemanticChecker:
                     f"cannot call mutating member function '{call.name}' "
                     f"through a const object or field",
                 )
-            
+
+
+def contains_call(node):
+    """True when the value contains a call, which may print or read."""
+    if isinstance(node, (CallNode, MemberCallNode)):
+        return True
+    if isinstance(node, BinOpNode):
+        return contains_call(node.left) or contains_call(node.right)
+    if isinstance(node, NotNode):
+        return contains_call(node.operand)
+    if isinstance(node, ResultFieldNode):
+        return contains_call(node.receiver)
+    if isinstance(node, InitListNode):
+        return any(contains_call(value) for value in node.values)
+    return False
+
+
+class UseCounter:
+    """Counts the reads of every declaration and the calls of every function."""
+
+    def __init__(self):
+        self.reads = {}
+        self.declarations = []
+        self.calls = {}
+        self.functions = []
+
+    def read(self, decl):
+        if decl is None:
+            return
+        self.reads[id(decl)] = self.reads.get(id(decl), 0) + 1
+
+    def call(self, fn):
+        if fn is None:
+            return
+        self.calls[id(fn)] = self.calls.get(id(fn), 0) + 1
+
+    def visit_program(self, node):
+        for statement in node.statements:
+            if isinstance(statement, FnNode):
+                self.functions.append(statement)
+                self.calls.setdefault(id(statement), 0)
+            statement.accept(self)
+        if node.exit_node is not None:
+            node.exit_node.accept(self)
+
+    def visit_block(self, node):
+        for statement in node.statements:
+            statement.accept(self)
+        if node.exit_node is not None:
+            node.exit_node.accept(self)
+
+    def visit_decl(self, node):
+        if getattr(node, "capture_init", False):
+            # A lambda's declaration holds its captures; each one is a read.
+            node.init.accept(self)
+            return
+
+        self.declarations.append(node)
+        self.reads.setdefault(id(node), 0)
+
+        values = [node.init] + list(node.extra_inits)
+        if any(contains_call(value) for value in values):
+            self.read(node)
+
+        for value in values:
+            value.accept(self)
+
+    def visit_assign(self, node):
+        if contains_call(node.value):
+            self.read(node.decl)
+        node.value.accept(self)
+
+    def visit_var(self, node):
+        self.read(node.decl)
+
+    def visit_fieldaccess(self, node):
+        self.read(node.decl)
+
+    def visit_membercall(self, node):
+        node.receiver.accept(self)
+        for arg in node.args:
+            arg.accept(self)
+
+    def visit_call(self, node):
+        self.call(node.fn)
+        for arg in node.args:
+            arg.accept(self)
+
+    def visit_resultfield(self, node):
+        node.receiver.accept(self)
+
+    def visit_binop(self, node):
+        node.left.accept(self)
+        node.right.accept(self)
+
+    def visit_not(self, node):
+        node.operand.accept(self)
+
+    def visit_initlist(self, node):
+        for value in node.values:
+            value.accept(self)
+
+    def visit_print(self, node):
+        node.value.accept(self)
+
+    def visit_exit(self, node):
+        node.value.accept(self)
+
+    def visit_if(self, node):
+        node.condition.accept(self)
+        node.then_block.accept(self)
+        if node.else_block is not None:
+            node.else_block.accept(self)
+
+    def visit_while(self, node):
+        node.condition.accept(self)
+        node.body.accept(self)
+
+    def visit_fn(self, node):
+        node.body.accept(self)
+
+    def visit_struct(self, node):
+        for method in node.methods:
+            method.accept(self)
+
+    def visit_lambda(self, node):
+        if node.declaration is not None:
+            node.declaration.accept(self)
+        if node.lowered_struct is not None:
+            node.lowered_struct.accept(self)
+        else:
+            node.body.accept(self)
+
+    def visit_const(self, node):
+        return None
+
+    def visit_bool(self, node):
+        return None
+
+    def visit_string(self, node):
+        return None
+
+    def visit_param(self, node):
+        return None
+
+    def visit_field(self, node):
+        return None
+
+    def visit_capture(self, node):
+        return None
+
+
+class Pruner:
+    """Removes dead declarations, their assignments, and uncalled functions."""
+
+    def __init__(self, dead):
+        self.dead = dead
+        self.live_lambdas = set()
+
+    def prune(self, program):
+        self.prune_block(program)
+        self.drop_dead_lambda_structs(program)
+
+    def prune_block(self, block):
+        kept = []
+        for statement in block.statements:
+            if self.is_dead(statement):
+                continue
+            self.prune_statement(statement)
+            kept.append(statement)
+        block.statements = kept
+        if block.exit_node is not None:
+            self.prune_statement(block.exit_node)
+
+    def prune_statement(self, node):
+        if isinstance(node, BlockNode):
+            self.prune_block(node)
+        elif isinstance(node, IfNode):
+            self.prune_block(node.then_block)
+            if node.else_block is not None:
+                self.prune_block(node.else_block)
+        elif isinstance(node, WhileNode):
+            self.prune_block(node.body)
+        elif isinstance(node, FnNode):
+            self.prune_block(node.body)
+        elif isinstance(node, StructNode):
+            for method in node.methods:
+                self.prune_block(method.body)
+        elif isinstance(node, LambdaNode):
+            if node.lowered_struct is not None:
+                self.live_lambdas.add(id(node.lowered_struct))
+            self.prune_block(node.body)
+
+    def drop_dead_lambda_structs(self, program):
+        structs = getattr(program, "generated_structs", None)
+        if structs is None:
+            return
+        program.generated_structs = [
+            struct for struct in structs
+            if not getattr(struct, "is_lambda", False)
+            or id(struct) in self.live_lambdas
+        ]
+
+    def is_dead(self, node):
+        if isinstance(node, (DeclNode, FnNode)):
+            return id(node) in self.dead
+        if isinstance(node, AssignNode):
+            return id(node.decl) in self.dead
+        return False
+
+
+def remove_unused(program):
+    """Drops unread declarations and uncalled functions until nothing changes."""
+    while True:
+        counter = UseCounter()
+        program.accept(counter)
+        dead = {
+            id(declaration)
+            for declaration in counter.declarations
+            if counter.reads[id(declaration)] == 0
+        }
+        dead |= {
+            id(function)
+            for function in counter.functions
+            if counter.calls[id(function)] == 0
+        }
+        if not dead:
+            return program
+        Pruner(dead).prune(program)
+
+
 class CodeGenerator:
     def __init__(self):
         self.module = ir.Module(name="practice7", context=ir.Context())
@@ -2591,26 +2821,56 @@ def print_error(error):
     )
 
 
-def main():
-    ast_mode = len(sys.argv) == 3 and sys.argv[1] == "--ast"
-    checked_mode = len(sys.argv) == 3 and sys.argv[1] == "--ast-checked"
-    compile_mode = (
-        len(sys.argv) == 3
-        and sys.argv[1] not in {"--ast", "--ast-checked"}
+FLAGS = {"--ast", "--ast-checked", "--remove-unused"}
+
+
+def parse_arguments(arguments):
+    flags = set()
+    positional = []
+    unknown = []
+    for argument in arguments:
+        if argument in FLAGS:
+            flags.add(argument)
+        elif argument.startswith("--"):
+            unknown.append(argument)
+        else:
+            positional.append(argument)
+    return flags, positional, unknown
+
+
+def print_usage():
+    print(
+        "usage:\n"
+        "  python3 compiler.py [--remove-unused] SOURCE OUTPUT.ll\n"
+        "  python3 compiler.py --ast SOURCE\n"
+        "  python3 compiler.py --ast-checked [--remove-unused] SOURCE",
+        file=sys.stderr,
     )
+    return 1
 
-    if not ast_mode and not checked_mode and not compile_mode:
-        print(
-            "usage:\n"
-            "  python3 compiler.py SOURCE OUTPUT.ll\n"
-            "  python3 compiler.py --ast SOURCE\n"
-            "  python3 compiler.py --ast-checked SOURCE",
-            file=sys.stderr,
-        )
-        return 1
 
-    source_path = sys.argv[2] if ast_mode or checked_mode else sys.argv[1]
-    output_path = None if ast_mode or checked_mode else sys.argv[2]
+def main():
+    flags, positional, unknown = parse_arguments(sys.argv[1:])
+    if unknown:
+        print(f"unknown option: {unknown[0]}", file=sys.stderr)
+        return print_usage()
+
+    ast_mode = "--ast" in flags
+    checked_mode = "--ast-checked" in flags
+    remove_unused_mode = "--remove-unused" in flags
+
+    if ast_mode and checked_mode:
+        return print_usage()
+
+    if ast_mode or checked_mode:
+        if len(positional) != 1:
+            return print_usage()
+        source_path = positional[0]
+        output_path = None
+    else:
+        if len(positional) != 2:
+            return print_usage()
+        source_path, output_path = positional
 
     if output_path is not None:
         try:
@@ -2625,6 +2885,8 @@ def main():
             return 0
 
         SemanticChecker().check(program)
+        if remove_unused_mode:
+            remove_unused(program)
         if checked_mode:
             print(program.accept(AstPrinter()))
             return 0

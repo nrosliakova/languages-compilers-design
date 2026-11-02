@@ -1,0 +1,10 @@
+struct Point
+{
+    i32 mut x
+    i32 mut y
+}
+Point mut p{1, 2}
+p.x := 9
+i32 live{3}
+print(live)
+exit live

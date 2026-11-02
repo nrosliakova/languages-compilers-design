@@ -1,0 +1,10 @@
+Program
+  Struct Point
+    Field x i32 mut
+    Field y i32 mut
+  Decl live i32 const
+    Const 3
+  Print
+    Var live
+  Exit
+    Var live

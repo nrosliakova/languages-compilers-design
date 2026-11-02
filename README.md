@@ -72,8 +72,11 @@ Each test has a matching .expected file.
 Comparisons normalize CRLF/LF line endings.
 Failed compilation must not leave an output IR file.
 
-The current suite contains 78 valid and 137 invalid tests (215 total).
+The current suite contains 78 valid, 137 invalid and 8 optimization tests (223 total).
 AST dumps for the new valid programs are saved beside their sources.
+Each program in tests/opt also has a `.astc` file, the tree after the unused-code
+pass, and an `.expected` file that its output must match with and without the flag.
+Both runners accept `--remove-unused` (or `REMOVE_UNUSED=1`) and stay green both ways.
 
 Implementation lives in src/.
 Root-level compiler.py and lexer.py preserve compatibility with earlier commands
@@ -163,3 +166,59 @@ lli output.ll
 ```
 
 Expected stdout: `1`, `2`, `34`, `3`, then `Program exit with result 0`.
+
+## Practice 9
+
+The unused-code pass removes variables nobody reads and functions nobody calls.
+It runs on the tree, after the checker and before code generation, and repeats
+until a round removes nothing.
+
+```bash
+python3 src/compiler.py --remove-unused input.txt output.ll
+python3 src/compiler.py --remove-unused --ast-checked input.txt
+python3 src/compiler.py --remove-unused --ast input.txt
+bash run_tests.sh --remove-unused
+REMOVE_UNUSED=1 bash run_tests.sh
+python3 check.py --remove-unused
+```
+
+The flag may stand first, last, or between the paths. Without it the compiler
+behaves exactly as before.
+
+- One visitor counts, for every declaration, the reads that resolve to it, and
+  for every global function, the calls that name it. It uses the links the
+  checker already filled, so two declarations named `x` are two counters.
+- A declaration with zero reads and a global function with zero calls are
+  removed; the assignments to a removed variable go with it.
+- The pass repeats: a removed initialiser or body can take away the last read or
+  call of something else. It stops because every round that does not stop
+  removes at least one declaration or function.
+- A declaration whose initialiser contains a call stays, and so does an
+  assignment whose value contains one, together with the declaration of its
+  variable: the call may print or read. `read()` counts the same way.
+- Parameters, fields, member functions and lambdas are never removed. A lambda
+  declaration carries its captures, and each capture is a read of the captured
+  variable.
+- When a function goes, the lowered structs of lambdas declared inside its body
+  go with it, so the emitted `.ll` does not keep a `call` method for a lambda
+  that no longer exists.
+- `tests/opt` holds 8 programs: the two warm-up programs, the three-function
+  chain, a declaration inside an `if` block, a declaration kept because its
+  value calls a function that prints, a program where nothing is removed, a
+  field write that goes with its dead object, and the self-feeding limit.
+
+### Optimizations
+
+A variable that only feeds itself, `k := k + 1` with nobody else reading `k`,
+survives: the right side reads it. That is a limit of counting, not a bug;
+`tests/opt/self_feeding.txt` pins it.
+
+Who frees a removed subtree: the compiler is written in Python, so CPython's
+reference counting frees a node as soon as nothing points at it, and the tracing
+collector only ever sees what counting cannot. The nodes keep no pointer to
+their parent, so unlinking a declaration or a function is enough. The links the
+checker fills in run from a use to a declaration written earlier, which never
+closes a reference cycle through a removed subtree. Measured with `weakref.ref`:
+the `unused` function of `tests/opt/function_chain.txt` and the removed `y` of
+`tests/opt/warmup_chain.txt` both report `None` immediately after the pass, with
+no `gc.collect()` and nothing left for it to collect.
