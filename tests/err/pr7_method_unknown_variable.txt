@@ -1,0 +1,9 @@
+struct S
+{
+    i32 x
+    fn f := () -> i32
+    {
+        exit unknown
+    }
+}
+exit 0

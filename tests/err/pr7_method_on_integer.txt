@@ -1,0 +1,3 @@
+i32 p{1}
+i32 r{p.nope()}
+exit r

@@ -1,0 +1,9 @@
+fn take := (i32 value) -> i32
+{
+    exit value
+}
+fn f := []() -> i32
+{
+    exit 1
+}
+exit take(f)

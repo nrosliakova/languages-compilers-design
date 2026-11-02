@@ -1,0 +1,6 @@
+fn fib := (i32 n) -> i32
+{
+    exit n
+}
+bool a{fib(true)}
+exit a

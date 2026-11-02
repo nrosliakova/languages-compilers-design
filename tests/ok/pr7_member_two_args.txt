@@ -1,0 +1,13 @@
+struct Pair
+{
+    i64 x
+    fn add := (i32 a, i64 b) -> i64
+    {
+        i64 r{x + a + b}
+        print(r)
+        exit r
+    }
+}
+Pair p{10}
+i64 r{p.add(2, 3)}
+exit r

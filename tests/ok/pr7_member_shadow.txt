@@ -1,0 +1,19 @@
+struct Point
+{
+    i32 x
+    fn local := () -> i32
+    {
+        i32 mut x{5}
+        x := x + 1
+        exit x
+    }
+    fn parameter := (i32 x) -> i32
+    {
+        exit x
+    }
+}
+Point p{99}
+i32 a{p.local()}
+i32 b{p.parameter(7)}
+i32 r{a + b + p.x}
+exit r

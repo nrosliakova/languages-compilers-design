@@ -1,0 +1,6 @@
+bool flag{false}
+if !flag
+{
+ exit !flag
+}
+exit false

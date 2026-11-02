@@ -1,0 +1,10 @@
+i32 n{4}
+fn value := [mut n]() -> i32
+{
+    exit n
+}
+fn wrapper := [value]() -> i32
+{
+    exit value()
+}
+exit wrapper()

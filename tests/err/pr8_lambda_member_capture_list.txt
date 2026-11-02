@@ -1,0 +1,9 @@
+struct Box
+{
+    i32 k
+    fn value := [k]() -> i32
+    {
+        exit k
+    }
+}
+exit 0

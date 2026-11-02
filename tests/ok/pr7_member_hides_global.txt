@@ -1,0 +1,26 @@
+struct Point
+{
+    i32 x
+    fn value := () -> i32
+    {
+        exit x
+    }
+    fn use := () -> i32
+    {
+        i32 r{value() + extra()}
+        exit r
+    }
+}
+fn value := () -> i32
+{
+    exit 100
+}
+fn extra := () -> i32
+{
+    exit 2
+}
+Point p{7}
+i32 a{p.use()}
+i32 b{value()}
+i32 r{a + b}
+exit r

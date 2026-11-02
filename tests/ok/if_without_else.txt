@@ -1,0 +1,6 @@
+i32 mut x{10}
+if false
+{
+ x := 99
+}
+exit x

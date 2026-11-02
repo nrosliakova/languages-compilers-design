@@ -1,0 +1,7 @@
+print("100% %d %s")
+print("literal \n and \t")
+print("")
+print("Привіт")
+print(0 - 9)
+print(false)
+exit 0

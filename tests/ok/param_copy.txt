@@ -1,0 +1,14 @@
+struct Point
+{
+    i32 mut x
+}
+fn bumped := (Point p) -> Point
+{
+    Point mut q{p}
+    q.x := q.x + 1
+    exit q
+}
+Point mut p{1}
+Point mut r{bumped(p)}
+i32 result{p.x * 10 + r.x}
+exit result

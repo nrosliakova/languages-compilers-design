@@ -1,0 +1,24 @@
+struct Counter
+{
+    i32 mut n
+    fn call := () -> i32
+    {
+        n := n + 1
+        exit n
+    }
+}
+
+struct Inner
+{
+    Counter mut c
+}
+struct Outer
+{
+    Inner mut inner
+}
+Counter initial{0}
+Inner inner{initial}
+Outer mut o{inner}
+print(o.inner.c())
+print(o.inner.c.call())
+exit o.inner.c()

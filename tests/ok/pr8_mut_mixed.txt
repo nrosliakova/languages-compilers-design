@@ -1,0 +1,10 @@
+i32 step{2}
+i32 n{0}
+fn next := [step, mut n]() -> i32
+{
+    n := n + step
+    exit n
+}
+print(next())
+print(next())
+exit n

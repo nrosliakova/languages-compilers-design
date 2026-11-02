@@ -1,0 +1,7 @@
+i32 call{9}
+fn f := [call]() -> i32
+{
+    exit call
+}
+print(f())
+exit f.call()

@@ -1,0 +1,12 @@
+struct Box
+{
+    i32 mut n
+}
+Box mut box{7}
+fn value := [box]() -> i32
+{
+    exit box.n
+}
+box.n := 99
+print(value())
+exit box.n

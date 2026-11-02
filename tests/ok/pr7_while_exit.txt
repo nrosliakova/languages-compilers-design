@@ -1,0 +1,11 @@
+fn f := () -> i32
+{
+    while true
+    {
+        print("done")
+        exit 9
+    }
+    exit 0
+}
+i32 r{f()}
+exit r

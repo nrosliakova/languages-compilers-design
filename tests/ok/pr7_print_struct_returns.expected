@@ -1,0 +1,7 @@
+Point{x: 0, y: 0}
+Point{x: 5, y: 4}
+Point{x: 3, y: 4}
+Box{p: Point{x: 3, y: 4}, enabled: false, big: 6000000000}
+Point{x: 4, y: 4}
+Point{x: 3, y: 4}
+Program exit with result 0

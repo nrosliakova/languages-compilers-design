@@ -1,0 +1,6 @@
+struct Point
+{
+    Point center
+}
+i32 a{1}
+exit a

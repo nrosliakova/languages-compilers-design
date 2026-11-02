@@ -1,0 +1,10 @@
+struct Point
+{
+    i32 x
+}
+struct Point
+{
+    i32 y
+}
+i32 a{1}
+exit a

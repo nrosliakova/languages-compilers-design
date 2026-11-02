@@ -1,0 +1,16 @@
+i32 x{1}
+fn same := [x]() -> i32
+{
+    exit x
+}
+if true
+{
+    i32 y{2}
+    fn same := [y]() -> i32
+    {
+        exit y
+    }
+    print(same())
+}
+print(same())
+exit 0

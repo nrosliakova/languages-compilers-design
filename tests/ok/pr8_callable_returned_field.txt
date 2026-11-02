@@ -1,0 +1,21 @@
+struct Scale
+{
+    i32 k
+    fn call := (i32 v) -> i32
+    {
+        i32 r{v * k}
+        exit r
+    }
+}
+
+struct Holder
+{
+    Scale scale
+}
+fn make := () -> Holder
+{
+    Scale scale{3}
+    Holder h{scale}
+    exit h
+}
+exit make().scale(14)

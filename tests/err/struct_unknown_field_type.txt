@@ -1,0 +1,6 @@
+struct Point
+{
+    Foo x
+}
+i32 a{1}
+exit a

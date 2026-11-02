@@ -1,0 +1,13 @@
+struct Point
+{
+    i32 mut x
+    fn input := () -> i32
+    {
+        x := read()
+        print(x)
+        exit x
+    }
+}
+Point mut p{0}
+i32 r{p.input()}
+exit p.x

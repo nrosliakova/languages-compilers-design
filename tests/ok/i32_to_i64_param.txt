@@ -1,0 +1,7 @@
+fn widen := (i64 big) -> i64
+{
+    exit big
+}
+i32 small{7}
+i64 result{widen(small)}
+exit result

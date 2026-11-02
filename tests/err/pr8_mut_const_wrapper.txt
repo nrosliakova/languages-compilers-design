@@ -1,0 +1,15 @@
+i32 n{0}
+fn next := [mut n]() -> i32
+{
+    n := n + 1
+    exit n
+}
+fn wrapper := [mut next]() -> i32
+{
+    exit next()
+}
+fn outer := [wrapper]() -> i32
+{
+    exit wrapper()
+}
+exit 0

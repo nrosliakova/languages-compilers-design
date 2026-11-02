@@ -1,0 +1,7 @@
+i32 mut k{0}
+while k != 3
+{
+    k := k + 1
+}
+i32 unused{9}
+exit k

@@ -1,0 +1,397 @@
+AI USAGE — PRACTICE 9
+Unused variables and unused functions. Session of 2 November 2026, Europe/Kiev.
+
+Two parts: the account the practice asks for (tools, prompts, what was taken
+as-is, what was changed), then the session's conversation in order.
+
+==================== PART 1 — TOOLS, TAKEN AS-IS, CHANGED ====================
+Tools used
+- Notion: the Practice 9 page and the task page in the panel; memory search
+  (no stored memories matched, so the About page stayed empty).
+- The computer sandbox: unzip, python3, git, ripgrep, sed. The project arrived as
+  1.zip (1 032 388 bytes).
+- No lli and no clang in the sandbox. Every generated .ll was executed through
+  llvmlite's JIT with a small local stand-in for lli, used only to compare
+  program output. That stand-in is not part of the submitted project.
+- python3 src/compiler.py (--ast, --ast-checked, --remove-unused),
+  bash run_tests.sh, python3 check.py, python3 check_pr8.py, weakref/gc for the
+  memory measurement.
+
+What was taken as-is from the project
+- The AST node classes, the visitor pattern, AstPrinter, and the links the
+  semantic checker already fills (VarNode.decl, FieldAccessNode.decl,
+  AssignNode.decl, CallNode.fn, MemberCallNode.fn, LambdaNode.declaration).
+- The structure of run_tests.sh, its lli usage and its NAME.in convention, and
+  the structure of check.py.
+- Every existing test and .expected file: none were edited.
+
+What the assistant wrote or changed
+- src/compiler.py: contains_call, UseCounter, Pruner, remove_unused, and the new
+  argument handling in main (the old code accepted one fixed order only).
+- tests/opt: 8 programs with .astc and .expected files.
+- run_tests.sh and check.py: the --remove-unused option (and REMOVE_UNUSED=1)
+  and the tests/opt checks.
+- README.md: the Practice 9 section and the Optimizations note.
+- This log.
+
+Not used: no code, text or data was pasted in from outside the project. The
+compiler sources, the task text and the test files are the only inputs.
+
+==================== PART 2 — VERBATIM CONVERSATION ====================
+The prompts below are exactly as typed, typos included. The assistant's answers
+are reproduced as delivered; attached files are marked in square brackets and the
+long terminal paste in turn 5 is abbreviated.
+
+==================== USER — TURN 1 ====================
+read the task and my project status, then lets start doing it with task 1
+[attached: 1.zip, application/x-zip-compressed, 1032388 bytes]
+
+==================== ASSISTANT — TURN 1 ====================
+**Task 1 is done and green.** Everything is in `src/compiler.py` — a new section between `SemanticChecker` and `CodeGenerator`, so the pass runs exactly once the checker has accepted the program and before code generation.[^https://app.notion.com/p/40c73e86a420809ca0abdf07dd679b3d]
+
+What I added:
+
+| Piece | Role |
+| --- | --- |
+| `contains_call(value)` | does this value contain a call (or `read()`)? |
+| `UseCounter` | one visitor, counts reads per declaration via the `decl` links the checker already filled |
+| `Pruner` | rebuilds statement lists without dead declarations and the assignments to them |
+| `remove_unused(program)` | the loop: count, remove, repeat until a round removes nothing |
+| `parse_arguments` / `main` | `--remove-unused` accepted first, last, or between the paths |
+
+Reads are counted at `Var`, field chains (`p.x`, `p.sum()`), callable objects (`c(5)`), capture lists, print and exit; an assignment target is not a read, but an assignment whose value contains a call keeps its variable. Declarations whose initialiser contains a call stay, and parameters, fields and lambdas are never candidates.
+
+Your two warm-up programs, run through `--remove-unused --ast-checked`:
+
+```text
+Decl z i32 const        # w1: y removed, then x, then a round that removes nothing
+  Const 15
+Exit
+  Var z
+```
+```text
+Decl r i32 mut          # w2: outer x gone, inner x and r := x stay
+  Const 0
+If
+  Bool true
+  Block
+    Decl x i32 const
+      Const 10
+    Assign r
+      Var x
+Exit
+  Var r
+```
+
+I checked the round counts too: w1 removes `y` then `x` then stops (three iterations), w2 removes `x` once.
+
+**Verification** — this sandbox has no `lli`, so I ran every generated `.ll` through LLVM's JIT (llvmlite) instead, same as for Practice 8:
+
+- 78 programs in `tests/ok`: identical output with and without the flag, and identical to the stored `.expected`
+- 137 programs in `tests/err`: same error text, still no output file
+- `python3 -m unittest check_pr8` still passes
+- extra cases hand-checked: assignment removed with its declaration, emptied `if`/`while` bodies kept and compiled, dead field write `p.x := 9` removed, member-call receiver kept, lambda capture keeping its variable alive, `read()` kept, self-feeding `k := k + 1` surviving, dead locals inside lambda bodies and member functions
+
+[attached: pr9-task1.zip]
+
+Nothing is committed — `git status` shows only `M src/compiler.py`. Next: Task 2 reuses the same loop one level up (call counting per function), then `tests/opt` with the `.astc` files, the `--remove-unused` option in the test script, the memory note under Optimizations, and the `ai_usage.txt` entry. Want me to go straight into Task 2?
+
+[^https://app.notion.com/p/40c73e86a420809ca0abdf07dd679b3d]
+
+==================== USER — TURN 2 ====================
+next
+
+==================== ASSISTANT — TURN 2 ====================
+**Task 2 is in, and the three-function chain behaves exactly as the task describes.**[^https://app.notion.com/p/40c73e86a420809ca0abdf07dd679b3d]
+
+The same visitor now counts calls, and the same loop drives both removals:
+
+- `UseCounter.visit_call` counts `node.fn` — the checker's link from a call to the global `FnNode`. That covers calls in the statements, in another function, in a member function and in a lambda body, since every body is walked.
+- Only `FnNode`s in `ProgramNode.statements` are candidates, so member functions and lambdas are never removed, and a call to a method or to a callable object can't keep a global function alive.
+- `remove_unused` now takes declarations with zero reads **and** functions with zero calls in the same round, so the removed body's calls disappear before the next count.
+
+On the chain from the task:
+
+| Round | Removed | Why |
+| --- | --- | --- |
+| 1 | `unused` | no call anywhere |
+| 2 | `helper` | its only call went with `unused` |
+| 3 | nothing | `twice` is still called from `main` |
+
+```text
+define i32 @"main"()
+define i32 @"fn_twice"(i32 %"a")
+```
+
+Four defined functions before the flag, two after, and the program exits with 4 both ways.
+
+One addition beyond the letter of the task: when a function goes, the lowered structs of lambdas declared inside its body go with it, so the `.ll` doesn't keep a `lambda.helper_call` for a lambda that no longer exists. Without that, the dead body's lambda would still be emitted as an uncalled function.
+
+Other cases verified by running both builds:
+
+- `twice` called only from a method body or only from a lambda body: stays
+- `fn never` next to them: removed
+- self-recursion and the `ping`/`pong` cycle: both stay (counting cannot see a cycle)
+- a member function nobody calls: stays
+- 78 `tests/ok` programs: identical output with and without the flag, and equal to the stored `.expected`
+- 137 `tests/err` programs: identical errors, no output file; `unittest check_pr8` still green
+
+(The two failing runs you'd have seen in my earlier output were my own harness writing to the same `/tmp` IR files from two parallel runs — not the compiler. Unique temp paths fixed it.)
+
+[attached: pr9-task1-2.zip]
+
+Still nothing committed. Left for Task 3: `tests/opt` with six programs (`.txt`, `.astc`, `.expected`), the `--remove-unused` option in the test script, the note under Optimizations about who frees a removed subtree, plus the `ai_usage.txt` entry. Want me to build the `tests/opt` set and the script option next?
+
+[^https://app.notion.com/p/40c73e86a420809ca0abdf07dd679b3d]
+
+==================== USER — TURN 3 ====================
+next
+
+==================== ASSISTANT — TURN 3 ====================
+**All three tasks are done: 223 tests pass with and without `--remove-unused`.**[^https://app.notion.com/p/40c73e86a420809ca0abdf07dd679b3d]
+
+`tests/opt` has 8 programs, each with a `.astc` and a `.expected`:
+
+| Program | What it pins |
+| --- | --- |
+| `warmup_chain` | y goes, then x; `z` and `exit z` remain |
+| `warmup_shadow` | outer `x` goes, inner `x` and `r := x` stay |
+| `function_chain` | `unused` then `helper` go; only `twice` remains |
+| `decl_in_if` | `unused` goes inside the `if` block, `used` stays |
+| `call_kept` | `kept` stays because its value calls a printing function |
+| `nothing_removed` | the tree is unchanged |
+| `dead_field_write` | `p` goes together with `p.x := 9` |
+| `self_feeding` | `k := k + 1` survives, `unused` goes |
+
+Both runners take the flag, and both also check `tests/opt` — the stored tree from `--remove-unused --ast-checked`, then the stored output compiled each way:
+
+```bash
+bash run_tests.sh --remove-unused      # or REMOVE_UNUSED=1 bash run_tests.sh
+python3 check.py --remove-unused       # or REMOVE_UNUSED=1 python3 check.py
+# both: Passed: 223, Failed: 0 — and the same 223 without the flag
+```
+
+`README.md` now has a Practice 9 section, and the note under **Optimizations** answers the memory question next to the self-feeding line: Python's reference counting frees a removed subtree immediately because the AST keeps no parent pointer, and the checker's links run from a use to a declaration written earlier, so no cycle holds a removed node. Measured with `weakref.ref` on the removed `unused` function and on the removed `y`: both return `None` right after the pass, without `gc.collect()`.
+
+One caveat worth knowing before you show it: the `.astc` files came out of the compiler itself and I reviewed them line by line, and the `.expected` files came from running the unoptimized build. They are regression pins, not independent truth. That is written into `ai_usage.txt` too, along with the three prompts, the tools, and what I took as-is versus changed.
+
+[attached: pr9-complete.zip]
+
+Still uncommitted — `git status` shows five modified files plus `tests/opt/`. Want me to create `practice-9`, commit, and leave the push and the PR to you?
+
+[^https://app.notion.com/p/40c73e86a420809ca0abdf07dd679b3d]
+
+==================== USER — TURN 4 ====================
+how to test
+
+==================== ASSISTANT — TURN 4 ====================
+Everything runs from the repo root, with `lli` on PATH (your machine has it; the sandbox didn't, which is why I verified through a JIT stand-in that isn't in the project).
+
+**The whole suite, both ways**
+
+```bash
+bash run_tests.sh                     # Passed: 223, Failed: 0
+bash run_tests.sh --remove-unused     # Passed: 223, Failed: 0
+REMOVE_UNUSED=1 bash run_tests.sh     # same, from the environment
+
+python3 check.py                      # Passed: 223, Failed: 0
+python3 check.py --remove-unused
+python3 check_pr8.py                  # 9 checks, OK
+```
+
+Green means the same 223 both ways: 78 valid programs print what `.expected` says, 137 invalid ones fail with the same message and leave no `.ll`, and 8 programs in `tests/opt` match both their `.astc` tree and their `.expected` output. On a failure `diff -u` prints the expected and actual lines, and the test name comes right above it.
+
+**The four demonstrations for the teacher**[^https://app.notion.com/p/40c73e86a420809ca0abdf07dd679b3d]
+
+```bash
+# 1. both warm-up programs, tree after the pass
+python3 src/compiler.py --remove-unused --ast-checked tests/opt/warmup_chain.txt
+python3 src/compiler.py --remove-unused --ast-checked tests/opt/warmup_shadow.txt
+
+# 2. the three-function chain: exit line with 4, and only two defined functions
+python3 src/compiler.py --remove-unused tests/opt/function_chain.txt chain.ll
+lli chain.ll
+grep '^define' chain.ll        # define i32 @"main"()  /  define i32 @"fn_twice"(i32 %"a")
+
+# 3. the script green twice
+bash run_tests.sh
+bash run_tests.sh --remove-unused
+
+# 4. the memory note
+sed -n '/### Optimizations/,$p' README.md
+```
+
+**One program at a time**, if you want to poke at something:
+
+```bash
+python3 src/compiler.py --remove-unused --ast-checked tests/opt/self_feeding.txt   # tree
+python3 src/compiler.py --remove-unused tests/opt/self_feeding.txt /tmp/o.ll       # IR
+lli /tmp/o.ll                                                                      # output
+diff <(lli /tmp/o.ll) tests/opt/self_feeding.expected                              # same both ways
+```
+
+Add a test by dropping `tests/opt/NAME.txt` and generating its two companions:
+
+```bash
+python3 src/compiler.py --remove-unused --ast-checked tests/opt/NAME.txt > tests/opt/NAME.astc
+python3 src/compiler.py tests/opt/NAME.txt /tmp/n.ll && lli /tmp/n.ll > tests/opt/NAME.expected
+```
+
+Read the `.astc` before you trust it — that file is what the pass actually did, so it is the thing to review, not just regenerate.
+
+[^https://app.notion.com/p/40c73e86a420809ca0abdf07dd679b3d]
+
+==================== USER — TURN 5 ====================
+[pasted terminal output from ubuntu@noble3:~/languages-compilers-design/project1,
+1165 lines. It begins:]
+ubuntu@noble3:~/languages-compilers-design/project1$ bash run_tests.sh                     # Passed: 223, Failed: 0
+bash run_tests.sh --remove-unused     # Passed: 223, Failed: 0
+REMOVE_UNUSED=1 bash run_tests.sh     # same, from the environment
+
+python3 check.py                      # Passed: 223, Failed: 0
+python3 check.py --remove-unused
+python3 check_pr8.py                  # 9 checks, OK
+Running valid tests...
+PASS: tests/ok/assignment_both_arms.txt
+[...]
+[it ends with:]
+PASS     optimize tests/opt/warmup_shadow.txt
+
+Passed: 223
+Failed: 0
+.........
+----------------------------------------------------------------------
+Ran 9 tests in 0.269s
+
+OK
+ubuntu@noble3:~/languages-compilers-design/project1$
+[The paste contains no FAIL line: five runs of "Passed: 223, Failed: 0" and one
+"OK" from check_pr8.py. The per-test PASS lines are abbreviated here.]
+
+==================== ASSISTANT — TURN 5 ====================
+Your paste shows it's green on your machine, with real `lli`: five runs of **Passed: 223, Failed: 0** (`run_tests.sh` plain, `--remove-unused`, `REMOVE_UNUSED=1`, `check.py` plain and with the flag) and `check_pr8.py` OK. That also confirms the 8 `tests/opt` programs pass the tree check and print the same both ways outside my sandbox.
+
+You're on `practice-9` with the work uncommitted, so the only thing left is the submission:
+
+```bash
+git add -A
+git commit -m "practice 9: unused variables and unused functions"
+git push -u origin practice-9
+gh pr create --base main --reviewer vovaskochko \
+  --title "Practice 9: the first optimization pass" \
+  --body "- --remove-unused removes unread declarations and uncalled global functions, iterating to a fixpoint
+- values that contain a call keep their variable; parameters, fields, methods and lambdas are never removed
+- tests/opt: 8 programs with .astc trees and .expected output; both runners accept --remove-unused
+- README: Optimizations note on the self-feeding limit and on who frees a removed subtree"
+```
+
+The commit message and PR body are worth a read before you send them — say what you'd put differently and I'll adjust.
+
+Then for the practice itself you need the four demonstrations: `--ast-checked` on both warm-ups, the chain's `4` and the two `define` lines, the script twice, and the note in the README.
+
+One thing to keep in mind when you show it: `ai_usage.txt` now ends with a Practice 9 log I wrote, covering the prompts, the tools, and what I changed versus took as-is. Skim it so you can stand behind it if `vovaskochko` asks.
+
+==================== USER — TURN 6 ====================
+explain all changes that were done
+
+==================== ASSISTANT — TURN 6 ====================
+Here is everything, file by file. The compiler itself gained one new section; nothing in the lexer, parser, checker or code generator was edited.
+
+| File | Change | Why |
+| --- | --- | --- |
+| `src/compiler.py` | +298 / -30 | the pass, and new argument handling |
+| `check.py` | +111 | flag support, plus `tests/opt` checks |
+| `run_tests.sh` | +67 | flag support, plus a `tests/opt` section |
+| `README.md` | +61 | Practice 9 section and the Optimizations note |
+| `ai_usage.txt` | +88 | Practice 9 session log |
+| `tests/opt/` | 24 new files | 8 programs, each `.txt`, `.astc`, `.expected` |
+
+## `src/compiler.py`
+
+Four new pieces between `SemanticChecker` and `CodeGenerator`, so the pass sits exactly where the task wants it: after the checker accepts the program, before code generation.
+
+**`contains_call(value)`** answers one question: can evaluating this value print or read? It returns true for a `CallNode` or a `MemberCallNode` and recurses into `BinOp`, `Not`, `ResultField` and `InitList`. This is the whole Task 1 safety rule in one function.
+
+**`UseCounter`** is the one visitor. It walks the tree and builds two tables keyed by `id(node)`:
+
+- `reads[id(decl)]`, how many reads resolve to that declaration
+- `calls[id(fn)]`, how many calls name that function
+
+The `id()` keys matter: two declarations both named `x` are two different objects, so the outer `x` cannot collect the inner `x`'s read. The counts come from the links the checker already filled, so no name lookup happens in the pass.
+
+What counts as a read: `VarNode` (`node.decl`), the base of a field chain (`p.x` reads `p`), the receiver of a member or callable call (`p.sum()`, `c(5)`), a capture in a lambda's capture list, and anything under `print` or `exit`. An assignment target is not a read.
+
+Two places deliberately count a fake read, so the declaration survives:
+
+```python
+# visit_decl: a value that may print keeps the declaration
+if any(contains_call(value) for value in values):
+    self.read(node)
+
+# visit_assign: same for the variable being assigned
+if contains_call(node.value):
+    self.read(node.decl)
+```
+
+`visit_lambda` needs care. A lambda's captures do not live in the statement list: the checker moved them into a lowered `DeclNode` stored on the node. So the visitor walks `node.declaration`, where each capture is a real `VarNode` pointing at the captured variable. Without that, `i32 k{5}` captured by a lambda would look unread and be deleted.
+
+**`Pruner`** takes the ids to remove and rebuilds statement lists instead of deleting while iterating:
+
+```python
+kept = []
+for statement in block.statements:
+    if self.is_dead(statement):
+        continue
+    self.prune_statement(statement)
+    kept.append(statement)
+block.statements = kept
+```
+
+`is_dead` covers a `DeclNode`, an `FnNode`, and an `AssignNode` whose `decl` is dead. `prune_statement` recurses into `if`/`else` blocks, `while` bodies, function bodies, struct methods and lambda bodies, so a dead local anywhere is reached. Blocks that end up empty stay, because their condition still runs.
+
+It also does one thing the task did not ask for: `drop_dead_lambda_structs` filters `program.generated_structs` down to lambdas still in the tree. When a function is removed, a lambda declared inside it would otherwise leave a `lambda.helper_call` definition in the `.ll` with nothing to call it.
+
+**`remove_unused(program)`** is the loop, and it now drives both tasks in one pass:
+
+```python
+dead  = {id(d) for d in counter.declarations if counter.reads[id(d)] == 0}
+dead |= {id(f) for f in counter.functions    if counter.calls[id(f)] == 0}
+if not dead: return program
+Pruner(dead).prune(program)
+```
+
+It repeats because removal feeds removal: a removed initialiser can hold the last read of another variable, a removed body the last call of another function. It terminates because every round that does not stop removes at least one declaration or function, and the tree is finite.
+
+**Argument handling.** The old `main` accepted one fixed order. Now `parse_arguments` separates flags from paths, so `--remove-unused` works first, last or in between, and an unknown `--option` is reported instead of being read as a filename. `--ast` still prints the parse tree and skips the checker, so it ignores the pass; `--ast-checked` prints the tree after it.
+
+## The two runners
+
+`run_tests.sh` gained `--remove-unused` and `REMOVE_UNUSED=1`, a `flags` array passed to every `tests/ok` and `tests/err` compile, and an optimization section that checks each `.astc` tree and then runs every `tests/opt` program twice, with and without the flag. The array expansion is written `${flags[@]+"${flags[@]}"}` so `set -u` stays happy on older bash when the array is empty.
+
+`check.py` got the same flag, plus `check_opt_test`: compare the tree from `--remove-unused --ast-checked` with the `.astc` file, then run the program both ways against the `.expected`. It reuses the `.in` file convention the old harness already had.
+
+## The tests and the notes
+
+`tests/opt` holds the eight programs the practice asks for: both warm-ups, the three-function chain, a declaration inside an `if`, a declaration kept because its value calls a printing function, a program where nothing is removed, plus a dead field write and the self-feeding limit. Each `.astc` is the tree after the pass, each `.expected` the output that must not change.[^https://app.notion.com/p/40c73e86a420809ca0abdf07dd679b3d]
+
+`README.md` documents the flag and the rules, and under **Optimizations** answers the two questions the practice asks: the self-feeding limit (`k := k + 1` survives because the right side reads it), and who frees a removed subtree, with the `weakref.ref` measurement showing the node is gone immediately after the pass.
+
+`ai_usage.txt` ends with the Practice 9 log: prompts, tools, what was taken as-is, what changed.
+
+## What was not touched
+
+Lexer, parser, semantic checker and code generator are byte-identical. The pass only unlinks nodes the checker had already validated, so code generation receives a smaller but still valid tree, and without the flag nothing runs at all.
+
+One question to check the design in your head: why does `remove_unused` need a loop at all, given that it already removes every zero-read declaration it finds in one round?
+
+[^https://app.notion.com/p/40c73e86a420809ca0abdf07dd679b3d]
+
+==================== USER — TURN 7 ====================
+generate ai usage
+
+==================== ASSISTANT — TURN 7 ====================
+This file: the Practice 9 section above, replacing an earlier shorter summary.
+The prompts are quoted as typed, the answers as delivered, the long terminal
+paste abbreviated, and the Practice 9 notes in README.md and in this file are
+written by the assistant, not copied from any source.
+==================== END PRACTICE 9 ====================

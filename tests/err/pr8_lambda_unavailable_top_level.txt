@@ -1,0 +1,10 @@
+fn host := () -> i32
+{
+    fn f := [k]() -> i32
+    {
+        exit k
+    }
+    exit f()
+}
+i32 k{10}
+exit host()

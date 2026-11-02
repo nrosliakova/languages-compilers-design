@@ -1,0 +1,22 @@
+struct Counter
+{
+    i32 mut x
+    fn a := (bool stop) -> i32
+    {
+        if stop
+        {
+            exit x
+        }
+        i32 r{b(true)}
+        exit r
+    }
+    fn b := (bool stop) -> i32
+    {
+        x := x + 1
+        i32 r{a(stop)}
+        exit r
+    }
+}
+Counter c{4}
+i32 r{c.a(false)}
+exit r

@@ -1,0 +1,15 @@
+struct Box
+{
+    i32 n
+    fn value := (i32 offset) -> i32
+    {
+        fn add := [n, offset]() -> i32
+        {
+            i32 r{n + offset}
+            exit r
+        }
+        exit add()
+    }
+}
+Box box{10}
+exit box.value(5)

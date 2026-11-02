@@ -1,0 +1,13 @@
+struct Box
+{
+    i32 mut n
+}
+Box box{5}
+fn next := [mut box]() -> i32
+{
+    box.n := box.n + 1
+    exit box.n
+}
+print(next())
+print(next())
+exit box.n
